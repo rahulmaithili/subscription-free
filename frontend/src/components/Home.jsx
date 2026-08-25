@@ -3,7 +3,7 @@ import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import '../home.css'
 
-export default function Home({ onNavigate }) {
+export default function Home({ onNavigate, currencySymbol = '₹' }) {
   const [products, setProducts] = useState([])
   const [portfolioItems, setPortfolioItems] = useState([])
   const [loading, setLoading] = useState(true)

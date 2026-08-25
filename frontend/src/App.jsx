@@ -199,7 +199,7 @@ export default function App() {
   // PUBLIC VISITOR FLOW (Landing Page -> Login / Sign Up)
   if (!currentUser) {
     if (publicView === 'home') {
-      return <Home onNavigate={setPublicView} />
+      return <Home onNavigate={setPublicView} currencySymbol={currencySymbol} />
     }
     if (publicView === 'signup') {
       return <SignUp onNavigate={setPublicView} />
