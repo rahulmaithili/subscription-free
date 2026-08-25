@@ -34,6 +34,10 @@ export default function App() {
   const [currencySymbol, setCurrencySymbol] = useState('₹')
   const [darkMode, setDarkMode] = useState(false)
 
+  // Submenu states
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [systemOpen, setSystemOpen] = useState(false)
+
   // Alarm badges count from Subscriptions
   const [expiredCount, setExpiredCount] = useState(0)
   const [expiringCount, setExpiringCount] = useState(0)
@@ -63,7 +67,6 @@ export default function App() {
             })
           }
 
-          // Check if DB settings exist (to determine if we need onboarding setup)
           const settingsSnap = await getDocs(collection(db, 'system_settings'))
           if (settingsSnap.empty) {
             setDbSeeded(false)
@@ -180,6 +183,32 @@ export default function App() {
         return <Users />
       case 'Settings':
         return <Settings currencySymbol={currencySymbol} onCurrencyChange={setCurrencySymbol} />
+      
+      // Placeholder config screens
+      case 'Payment Methods':
+      case 'Tax Rates':
+      case 'Currencies':
+      case 'AI Chat':
+      case 'Custom Fields':
+      case 'My Profile':
+      case 'Activity Logs':
+      case 'About App':
+        return (
+          <div className="data-section">
+            <div className="section-header">
+              <h2><i className="fas fa-info-circle"></i> {activeNav}</h2>
+            </div>
+            <div style={{ padding: '30px 20px', textAlign: 'center', background: '#f8f9fa', borderRadius: 8, border: '1px solid #e9ecef', color: '#666' }}>
+              <i className="fas fa-sliders-h fa-3x" style={{ color: 'var(--navy-accent)', marginBottom: 15 }}></i>
+              <h3>Configuration Parameters</h3>
+              <p>This module is managed dynamically through the global system configuration panel.</p>
+              <button className="btn btn-primary" onClick={() => setActiveNav('Settings')} style={{ marginTop: 10 }}>
+                Open Site Settings
+              </button>
+            </div>
+          </div>
+        )
+
       default:
         return <Dashboard user={userProfile} currencySymbol={currencySymbol} onNavigate={setActiveNav} />
     }
@@ -196,7 +225,6 @@ export default function App() {
     )
   }
 
-  // PUBLIC VISITOR FLOW (Landing Page -> Login / Sign Up)
   if (!currentUser) {
     if (publicView === 'home') {
       return <Home onNavigate={setPublicView} currencySymbol={currencySymbol} />
@@ -235,7 +263,7 @@ export default function App() {
           <img src={defaultProfileLogo} alt="Profile" className="sidebar-logo" />
         </div>
 
-        {/* Sidebar Menu items */}
+        {/* Sidebar Menu items matching PHP layout screenshot */}
         <div className="sidebar-menu-section" style={{ flex: 1, overflowY: 'auto' }}>
           <ul className="sidebar-menu">
             <li data-tooltip="Dashboard">
@@ -333,14 +361,92 @@ export default function App() {
                   </a>
                 </li>
 
-                <li data-tooltip="Site Settings">
-                  <a href="#" className={activeNav === 'Settings' ? 'active' : ''} onClick={() => setActiveNav('Settings')}>
-                    <i className="fas fa-cog"></i>
-                    <span>Site Settings</span>
+                <li data-tooltip="Payment Methods">
+                  <a href="#" className={activeNav === 'Payment Methods' ? 'active' : ''} onClick={() => setActiveNav('Payment Methods')}>
+                    <i className="fas fa-credit-card"></i>
+                    <span>Payment Methods</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="Tax Rates">
+                  <a href="#" className={activeNav === 'Tax Rates' ? 'active' : ''} onClick={() => setActiveNav('Tax Rates')}>
+                    <i className="fas fa-percent"></i>
+                    <span>Tax Rates</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="Currencies">
+                  <a href="#" className={activeNav === 'Currencies' ? 'active' : ''} onClick={() => setActiveNav('Currencies')}>
+                    <i className="fas fa-dollar-sign"></i>
+                    <span>Currencies</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="AI Chat">
+                  <a href="#" className={activeNav === 'AI Chat' ? 'active' : ''} onClick={() => setActiveNav('AI Chat')}>
+                    <i className="fas fa-comments"></i>
+                    <span>AI Chat</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="Custom Fields">
+                  <a href="#" className={activeNav === 'Custom Fields' ? 'active' : ''} onClick={() => setActiveNav('Custom Fields')}>
+                    <i className="fas fa-sliders-h"></i>
+                    <span>Custom Fields</span>
                   </a>
                 </li>
               </>
             )}
+
+            {/* Submenu: My Account */}
+            <li className={`has-submenu ${accountOpen ? 'open' : ''}`} data-tooltip="My Account">
+              <a href="#" onClick={(e) => { e.preventDefault(); setAccountOpen(!accountOpen) }} className="submenu-toggle">
+                <i className="fas fa-user-circle"></i>
+                <span>My Account</span>
+                <i className={`fas fa-chevron-down submenu-arrow ${accountOpen ? 'rotated' : ''}`} style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: accountOpen ? 'rotate(180deg)' : 'none' }}></i>
+              </a>
+              {accountOpen && (
+                <ul className="sidebar-submenu" style={{ display: 'block', listStyle: 'none', paddingLeft: 20 }}>
+                  <li>
+                    <a href="#" className={activeNav === 'My Profile' ? 'active' : ''} onClick={() => setActiveNav('My Profile')}>
+                      <span>My Profile</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" className={activeNav === 'Activity Logs' ? 'active' : ''} onClick={() => setActiveNav('Activity Logs')}>
+                      <span>Activity Logs</span>
+                    </a>
+                  </li>
+                </ul>
+              )}
+            </li>
+
+            {/* Submenu: System */}
+            {isAdmin && (
+              <li className={`has-submenu ${systemOpen ? 'open' : ''}`} data-tooltip="System">
+                <a href="#" onClick={(e) => { e.preventDefault(); setSystemOpen(!systemOpen) }} className="submenu-toggle">
+                  <i className="fas fa-cogs"></i>
+                  <span>System</span>
+                  <i className={`fas fa-chevron-down submenu-arrow ${systemOpen ? 'rotated' : ''}`} style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: systemOpen ? 'rotate(180deg)' : 'none' }}></i>
+                </a>
+                {systemOpen && (
+                  <ul className="sidebar-submenu" style={{ display: 'block', listStyle: 'none', paddingLeft: 20 }}>
+                    <li>
+                      <a href="#" className={activeNav === 'Settings' ? 'active' : ''} onClick={() => setActiveNav('Settings')}>
+                        <span>Site Settings</span>
+                      </a>
+                    </li>
+                  </ul>
+                )}
+              </li>
+            )}
+
+            <li data-tooltip="About App">
+              <a href="#" className={activeNav === 'About App' ? 'active' : ''} onClick={() => setActiveNav('About App')}>
+                <i className="fas fa-info-circle"></i>
+                <span>About App</span>
+              </a>
+            </li>
           </ul>
         </div>
 
