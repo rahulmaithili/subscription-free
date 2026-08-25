@@ -4,7 +4,9 @@ import { doc, getDoc, collection, getDocs } from 'firebase/firestore'
 import { auth, db, isFirebaseConfigured } from './firebase'
 
 // Components
+import Home from './components/Home'
 import Login from './components/Login'
+import SignUp from './components/SignUp'
 import SetupAssistant from './components/SetupAssistant'
 import Dashboard from './components/Dashboard'
 import Subscriptions from './components/Subscriptions'
@@ -24,7 +26,8 @@ export default function App() {
   const [userProfile, setUserProfile] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
 
-  // Navigation & UI state
+  // Navigation states for public visitors vs authenticated members
+  const [publicView, setPublicView] = useState('home') // 'home' | 'login' | 'signup'
   const [activeNav, setActiveNav] = useState('Dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [dbSeeded, setDbSeeded] = useState(true)
@@ -141,6 +144,7 @@ export default function App() {
     if (auth) {
       await signOut(auth)
     }
+    setPublicView('home')
   }
 
   const totalAlerts = expiredCount + expiringCount
@@ -192,8 +196,15 @@ export default function App() {
     )
   }
 
+  // PUBLIC VISITOR FLOW (Landing Page -> Login / Sign Up)
   if (!currentUser) {
-    return <Login onLoginSuccess={(profile) => setUserProfile(profile)} />
+    if (publicView === 'home') {
+      return <Home onNavigate={setPublicView} />
+    }
+    if (publicView === 'signup') {
+      return <SignUp onNavigate={setPublicView} />
+    }
+    return <Login onLoginSuccess={(profile) => setUserProfile(profile)} onNavigate={setPublicView} />
   }
 
   if (!dbSeeded) {

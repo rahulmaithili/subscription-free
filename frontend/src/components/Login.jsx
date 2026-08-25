@@ -4,7 +4,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswor
 import { doc, getDoc, setDoc, collection, getDocs, query, limit } from 'firebase/firestore'
 import { User, Lock, ArrowRight, AlertCircle, RefreshCw, CheckCircle, Sun, Moon } from 'lucide-react'
 
-export default function Login({ onLoginSuccess }) {
+export default function Login({ onLoginSuccess, onNavigate }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -70,11 +70,8 @@ export default function Login({ onLoginSuccess }) {
 
       let userCredential
       try {
-        // Attempt normal login
         userCredential = await signInWithEmailAndPassword(auth, email, password)
       } catch (signInErr) {
-        // If user not found and they are trying to log in with default credentials,
-        // automatically register them in Firebase Auth
         const defaultUsers = {
           'admin@demo.com': { password: 'admin123', fullName: 'Admin User', role: 'admin' },
           'salesperson1@demo.com': { password: 'sales123', fullName: 'Salesperson 1', role: 'salesperson' },
@@ -82,11 +79,8 @@ export default function Login({ onLoginSuccess }) {
         }
 
         if (defaultUsers[email] && defaultUsers[email].password === password) {
-          // Register demo user
           userCredential = await createUserWithEmailAndPassword(auth, email, password)
           const user = userCredential.user
-
-          // Set profile in Firestore
           const profile = {
             uid: user.uid,
             email: email,
@@ -103,63 +97,59 @@ export default function Login({ onLoginSuccess }) {
       }
 
       const user = userCredential.user
-
-      // Retrieve Firestore profile
       const docRef = doc(db, 'users', user.uid)
       const docSnap = await getDoc(docRef)
-
-      if (docSnap.exists()) {
-        const profile = docSnap.data()
-        if (!profile.isActive) {
-          await signOut(auth)
-          throw new Error('Your account has been deactivated. Please contact an administrator.')
-        }
-        onLoginSuccess(profile)
-      } else {
-        // Default admin profile if document doesn't exist
-        const profile = {
-          uid: user.uid,
-          email: user.email,
-          fullName: username,
-          role: 'admin',
-          isActive: true,
-          createdAt: new Date().toISOString()
-        }
-        await setDoc(doc(db, 'users', user.uid), profile)
-        onLoginSuccess(profile)
+      
+      let profileData = docSnap.exists() ? docSnap.data() : { uid: user.uid, email: user.email, role: 'admin', isActive: true }
+      
+      if (profileData.isActive === false) {
+        await signOut(auth)
+        setError('Your account is deactivated. Please contact administrator.')
+        setLoading(false)
+        return
       }
+
+      onLoginSuccess(profileData)
+
     } catch (err) {
       console.error(err)
-      let displayError = err.message
-      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-        displayError = 'Invalid username/email or password'
-      } else if (err.code === 'auth/invalid-email') {
-        displayError = 'Please enter a valid email address.'
-      }
-      setError(displayError)
-    } finally {
+      setError('Invalid username, email ID or login password.')
       setLoading(false)
     }
   }
 
-  const logoUrl = 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiGXxCe0WNNedmFqSWeF761f7Kshhc-NP5ChRQKz9fr97cO8VaarvD0KlCwqHojJVBWv-RAxfOqMI5rD4H78KnARyOc6QgwL1nRRFWf5xNQ1d9F9HfAoLPPGlTyP0GwNl4n-INMEsWLQ4Y7zJtz5bOdAnc2ePH9-uCRgshlo6BsS6gJEz6fhrxL-5U5O3sX/s160/channels4_profile.jpg'
-
   return (
-    <div className="login-container">
-      <div className="login-box">
-        <img src={logoUrl} alt="Logo" className="login-logo" />
-        <h2>My Company</h2>
+    <div className="auth-container">
+      <div className="auth-card">
+        {onNavigate && (
+          <button 
+            type="button" 
+            onClick={() => onNavigate('home')} 
+            className="auth-link" 
+            style={{ position: 'absolute', top: 20, left: 24, fontSize: 13, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <i className="fas fa-arrow-left"></i> Back to Home
+          </button>
+        )}
+
+        <div className="auth-header">
+          <div className="auth-logo-wrap">
+            <span className="auth-logo-circle"></span>
+          </div>
+          <h2>Sign In</h2>
+          <p>Login to manage your subscription configurations</p>
+        </div>
 
         {error && (
-          <div className="alert-box danger" style={{ textAlign: 'left', marginBottom: 20 }}>
-            <AlertCircle size={16} />
+          <div className="alert-box danger" style={{ marginBottom: 15 }}>
+            <i className="fas fa-exclamation-circle" style={{ marginRight: 8 }}></i>
             <span>{error}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="alert-box success" style={{ textAlign: 'left', marginBottom: 20 }}>
-            <CheckCircle size={16} />
+          <div className="alert-box success" style={{ marginBottom: 15 }}>
+            <i className="fas fa-check-circle" style={{ marginRight: 8 }}></i>
             <span>{successMsg}</span>
           </div>
         )}
@@ -167,14 +157,11 @@ export default function Login({ onLoginSuccess }) {
         <form onSubmit={handleLogin}>
           {isForgot ? (
             <div className="form-group" style={{ textAlign: 'left' }}>
-              <label>
-                <User size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
-                Email Address
-              </label>
+              <label>Registered Email ID</label>
               <input
                 type="email"
                 className="form-control"
-                placeholder="Enter registered email"
+                placeholder="Enter email ID"
                 value={forgotEmail}
                 onChange={(e) => setForgotEmail(e.target.value)}
                 required
@@ -225,7 +212,7 @@ export default function Login({ onLoginSuccess }) {
               type="button"
               className="auth-link"
               onClick={() => setIsForgot(!isForgot)}
-              style={{ fontSize: 13 }}
+              style={{ fontSize: 13, border: 0, background: 'transparent', cursor: 'pointer' }}
             >
               {isForgot ? 'Back to Login' : 'Forgot Password?'}
             </button>
@@ -243,8 +230,17 @@ export default function Login({ onLoginSuccess }) {
           </button>
         </form>
 
-        <div className="login-footer">
-          <p>© {new Date().getFullYear()} My Company. All rights reserved.</p>
+        {onNavigate && (
+          <div style={{ marginTop: 20, fontSize: 13, textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: 15 }}>
+            Don't have an account?{' '}
+            <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('signup') }} style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+              Register Now
+            </a>
+          </div>
+        )}
+
+        <div className="login-footer" style={{ marginTop: 20 }}>
+          <p>© {new Date().getFullYear()} Mr.Rahul Scripts. All rights reserved.</p>
         </div>
       </div>
 
