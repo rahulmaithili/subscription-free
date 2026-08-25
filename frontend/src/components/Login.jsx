@@ -23,6 +23,10 @@ export default function Login({ onLoginSuccess }) {
       document.body.classList.add('dark-mode')
       setIsDark(true)
     }
+
+    if (!auth) {
+      setError('Firebase environment variables are missing! Please configure VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID, etc. in your Netlify Environment Variables settings.')
+    }
   }, [])
 
   const toggleTheme = () => {
@@ -46,6 +50,12 @@ export default function Login({ onLoginSuccess }) {
     setError('')
     setSuccessMsg('')
     setLoading(true)
+
+    if (!auth) {
+      setError('Firebase configuration is missing! Please configure the VITE_FIREBASE_API_KEY and other environment variables in your Netlify site settings.')
+      setLoading(false)
+      return
+    }
 
     const email = mapUsernameToEmail(username)
 
