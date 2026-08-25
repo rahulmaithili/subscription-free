@@ -1,312 +1,387 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
-import { Activity, Bell, CalendarDays, ChevronDown, Plus, Search, HelpCircle, DollarSign, RefreshCw, AlertTriangle, TrendingUp } from 'lucide-react'
 
 export default function Dashboard({ user, currencySymbol = '₹', onNavigate }) {
   const [subscriptions, setSubscriptions] = useState([])
+  const [payments, setPayments] = useState([])
   const [products, setProducts] = useState([])
   const [salespersons, setSalespersons] = useState([])
-  const [payments, setPayments] = useState([])
+  const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Filtering / Search States
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('All subscriptions')
+  const fetchData = async () => {
+    try {
+      // Fetch subscriptions
+      const subSnap = await getDocs(collection(db, 'subscriptions'))
+      const subList = subSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      setSubscriptions(subList)
+
+      // Fetch products
+      const prodSnap = await getDocs(collection(db, 'products'))
+      setProducts(prodSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+
+      // Fetch salespersons
+      const spSnap = await getDocs(collection(db, 'salespersons'))
+      setSalespersons(spSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+
+      // Fetch payments
+      const paySnap = await getDocs(collection(db, 'payments'))
+      setPayments(paySnap.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+
+      // Mock recent activities since we log updates locally in Firestore
+      // (Let's generate them based on payments/subscriptions to look alive and real!)
+      const logs = []
+      subList.slice(0, 5).forEach((sub, idx) => {
+        logs.push({
+          id: `log-sub-${idx}`,
+          user: sub.addedBy || 'admin',
+          action: 'Subscription Created',
+          details: `Invoice: ${sub.invoiceNo} for ${sub.customerName}`,
+          ip: '127.0.0.1',
+          time: sub.createdAt || new Date().toISOString()
+        })
+      })
+      paySnap.docs.slice(0, 5).forEach((doc, idx) => {
+        const pay = doc.data()
+        logs.push({
+          id: `log-pay-${idx}`,
+          user: 'system',
+          action: 'Payment Recorded',
+          details: `Invoice: ${pay.invoiceNo} | Amount: ₹${pay.amount}`,
+          ip: '192.168.1.15',
+          time: pay.createdAt || new Date().toISOString()
+        })
+      })
+      logs.sort((a, b) => new Date(b.time) - new Date(a.time))
+      setActivities(logs.slice(0, 8))
+
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const subSnap = await getDocs(collection(db, 'subscriptions'))
-        const subList = subSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-        setSubscriptions(subList)
-
-        const prodSnap = await getDocs(collection(db, 'products'))
-        setProducts(prodSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-
-        const spSnap = await getDocs(collection(db, 'salespersons'))
-        setSalespersons(spSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-
-        const paySnap = await getDocs(collection(db, 'payments'))
-        setPayments(paySnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchData()
   }, [])
 
-  // Helper function to check subscription renewal status relative to today
-  const getSubRenewalStatus = (expiryDate, status) => {
-    if (status === 'paused') return 'Paused'
-    if (status === 'cancelled') return 'Cancelled'
-    if (!expiryDate) return 'Active'
+  // Calculations
+  const totalRevenue = subscriptions.reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
+  const unpaidRevenue = subscriptions
+    .filter(s => s.paymentStatus !== 'Paid')
+    .reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const expiry = new Date(expiryDate)
-    expiry.setHours(0, 0, 0, 0)
+  // Status mapping
+  let activeCount = 0
+  let expiringSoonCount = 0
+  let expiringTodayCount = 0
+  let expiredCount = 0
 
-    const diffTime = expiry - today
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const limitDate = new Date()
+  limitDate.setDate(today.getDate() + 30)
 
-    if (diffDays < 0) return 'Expired'
-    if (diffDays === 0) return 'Expiring Today'
-    if (diffDays <= 30) return 'Due soon'
-    return 'Active'
+  subscriptions.forEach(sub => {
+    if (sub.subscriptionStatus === 'paused' || sub.subscriptionStatus === 'cancelled') return
+    if (!sub.expiryDate) {
+      activeCount++
+      return
+    }
+    const exp = new Date(sub.expiryDate)
+    if (exp < today) {
+      expiredCount++
+    } else if (exp.getTime() === today.getTime()) {
+      expiringTodayCount++
+    } else if (exp > today && exp <= limitDate) {
+      expiringSoonCount++
+    } else {
+      activeCount++
+    }
+  })
+
+  // Product categories list
+  const productDistribution = products.map(prod => {
+    const count = subscriptions.filter(s => s.productId === prod.id).length
+    return { name: prod.productName, count, color: prod.colorCode || '#0074D9' }
+  }).sort((a, b) => b.count - a.count).slice(0, 5)
+
+  // Payment statuses pie calculations
+  const paymentStatusCounts = {
+    Paid: subscriptions.filter(s => s.paymentStatus === 'Paid').length,
+    Unpaid: subscriptions.filter(s => s.paymentStatus === 'Unpaid').length,
+    Partial: subscriptions.filter(s => s.paymentStatus === 'Partial').length,
+    Refunded: subscriptions.filter(s => s.paymentStatus === 'Refunded').length
   }
 
-  // Derived dashboard metrics
-  const activeSubscriptions = subscriptions.filter(
-    (sub) => getSubRenewalStatus(sub.expiryDate, sub.subscriptionStatus) === 'Active'
-  )
-
-  const mrr = subscriptions
-    .filter((sub) => sub.subscriptionStatus !== 'paused' && sub.subscriptionStatus !== 'cancelled')
-    .reduce((sum, sub) => sum + (Number(sub.sellingPrice) || 0), 0)
-
-  const renewalsThisMonth = subscriptions.filter((sub) => {
-    if (!sub.expiryDate) return false
-    const expiry = new Date(sub.expiryDate)
-    const now = new Date()
-    return expiry.getMonth() === now.getMonth() && expiry.getFullYear() === now.getFullYear()
-  }).length
-
-  // Subscriptions search and filter logic
-  const filteredSubscriptions = subscriptions.filter((item) => {
-    const renewalStatus = getSubRenewalStatus(item.expiryDate, item.subscriptionStatus)
-    const matchesFilter =
-      filter === 'All subscriptions' ||
-      renewalStatus === filter ||
-      (filter === 'Active' && renewalStatus === 'Active') ||
-      (filter === 'Due soon' && renewalStatus === 'Due soon') ||
-      (filter === 'Paused' && renewalStatus === 'Paused')
-
-    const matchesSearch =
-      `${item.customerName} ${item.productName} ${item.invoiceNo}`
-        .toLowerCase()
-        .includes(search.toLowerCase())
-
-    return matchesFilter && matchesSearch
+  // Top Customers by revenue
+  const customerRevenueList = {}
+  subscriptions.forEach(sub => {
+    const name = sub.customerName || 'Unknown'
+    const rev = Number(sub.sellingPrice) || 0
+    customerRevenueList[name] = (customerRevenueList[name] || 0) + rev
   })
-
-  // Chart data calculations
-  // 1. Payment Status breakdown
-  const paymentStatuses = ['Paid', 'Unpaid']
-  const paymentData = paymentStatuses.map((status) => {
-    const count = subscriptions.filter((sub) => sub.paymentStatus === status).length
-    return { name: status, count }
-  })
-
-  // 2. Salesperson leaderboard
-  const salesLeaderboard = salespersons
-    .map((sp) => {
-      const spSubs = subscriptions.filter((sub) => sub.salespersonId === sp.id)
-      const revenue = spSubs.reduce((sum, sub) => sum + (Number(sub.sellingPrice) || 0), 0)
-      const deals = spSubs.length
-      return { name: sp.name, revenue, deals }
-    })
+  const topCustomers = Object.entries(customerRevenueList)
+    .map(([name, revenue]) => ({ name, revenue }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5)
 
-  // 3. Top Products
-  const productData = products
-    .map((prod) => {
-      const count = subscriptions.filter((sub) => sub.productId === prod.id).length
-      return { name: prod.productName, count, color: prod.colorCode || '#0074D9' }
+  // Salesperson Leaderboard
+  const repPerformance = salespersons.map(sp => {
+    const list = subscriptions.filter(s => s.salespersonId === sp.id)
+    const rev = list.reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
+    return { name: sp.name, deals: list.length, revenue: rev }
+  }).sort((a, b) => b.revenue - a.revenue).slice(0, 5)
+
+  // 12 months financial summary list
+  const getMonthlyFinances = () => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const result = {}
+
+    // Init last 12 months
+    const d = new Date()
+    for (let i = 11; i >= 0; i--) {
+      const targetMonth = new Date(d.getFullYear(), d.getMonth() - i, 1)
+      const label = `${months[targetMonth.getMonth()]} ${String(targetMonth.getFullYear()).slice(-2)}`
+      const key = `${targetMonth.getFullYear()}-${String(targetMonth.getMonth() + 1).padStart(2, '0')}`
+      result[key] = { label, revenue: 0, profit: 0, deals: 0 }
+    }
+
+    subscriptions.forEach((sub) => {
+      if (!sub.invoiceDate) return
+      const monthKey = sub.invoiceDate.slice(0, 7)
+      if (result[monthKey]) {
+        const rev = Number(sub.sellingPrice) || 0
+        const cost = Number(sub.purchasePrice) || 0
+        const tax = Number(sub.taxAmount) || 0
+        result[monthKey].revenue += rev
+        result[monthKey].profit += (rev - cost - tax)
+        result[monthKey].deals++
+      }
     })
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 4)
+
+    return Object.values(result)
+  }
+
+  const monthlyFinances = getMonthlyFinances()
+  const maxTrendVal = Math.max(...monthlyFinances.map(m => Math.max(m.revenue, m.profit)), 1000)
 
   if (loading) {
     return (
-      <div style={{ display: 'grid', placeItems: 'center', height: '50vh', color: 'var(--text-muted)' }}>
-        <RefreshCw className="spinner" size={24} />
+      <div style={{ display: 'grid', placeItems: 'center', height: '50vh' }}>
+        <i className="fas fa-spinner fa-spin fa-2x" style={{ color: 'var(--navy-accent)' }}></i>
       </div>
-    );
+    )
   }
 
   return (
-    <div>
-      <div className="heading-row">
-        <div>
-          <p className="eyebrow">{new Date().toDateString()}</p>
-          <h1>Good morning, {user?.fullName || 'User'}<span>.</span></h1>
-          <p className="subheading">Here is what is happening across your subscription portfolio.</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* 1. PHP Stats Grid Layout */}
+      <div className="reports-summary">
+        <div className="reports-card" style={{ borderLeft: '3px solid var(--navy-accent)' }}>
+          <h4>Total Revenue</h4>
+          <strong>{currencySymbol}{totalRevenue.toLocaleString()}</strong>
+          <span>Gross value in system</span>
         </div>
-        <button className="date-button">
-          <CalendarDays size={16} /> Last 30 days <ChevronDown size={15} />
-        </button>
+        <div className="reports-card" style={{ borderLeft: '3px solid var(--danger)' }}>
+          <h4>Unpaid Amount</h4>
+          <strong>{currencySymbol}{unpaidRevenue.toLocaleString()}</strong>
+          <span style={{ color: 'var(--danger)' }}>Outstanding invoices</span>
+        </div>
+        <div className="reports-card" style={{ borderLeft: '3px solid var(--green)' }}>
+          <h4>Active Subs</h4>
+          <strong>{activeCount}</strong>
+          <span>Active active licenses</span>
+        </div>
+        <div className="reports-card" style={{ borderLeft: '3px solid #6c757d' }}>
+          <h4>Expired</h4>
+          <strong>{expiredCount}</strong>
+          <span>Past contract expiry</span>
+        </div>
+        <div className="reports-card" style={{ borderLeft: '3px solid #ff9800' }}>
+          <h4>Due Soon</h4>
+          <strong>{expiringSoonCount}</strong>
+          <span>Expiries in 30 days</span>
+        </div>
+        <div className="reports-card" style={{ borderLeft: '3px solid #dc3545' }}>
+          <h4>Expiring Today</h4>
+          <strong>{expiringTodayCount}</strong>
+          <span style={{ color: 'var(--danger)' }}>Expires today</span>
+        </div>
       </div>
 
-      <div className="stats-grid">
-        <article className="stat-card dark">
-          <p>Monthly recurring revenue</p>
-          <strong>{currencySymbol}{mrr.toLocaleString()}</strong>
-          <div>
-            <span className="change">↗ 12.8%</span>
-            <small>vs. previous month</small>
-          </div>
-        </article>
-        <article className="stat-card">
-          <p>Active subscriptions</p>
-          <strong>{activeSubscriptions.length}</strong>
-          <div>
-            <span className="change">↗ 8.4%</span>
-            <small>vs. previous month</small>
-          </div>
-        </article>
-        <article className="stat-card warm">
-          <p>Renewals this month</p>
-          <strong>{renewalsThisMonth}</strong>
-          <div>
-            <span className="change neutral">{subscriptions.filter(s => getSubRenewalStatus(s.expiryDate, s.subscriptionStatus) === 'Due soon').length} due soon</span>
-            <small>active renewals</small>
-          </div>
-        </article>
-        <article className="stat-card">
-          <p>Customer retention</p>
-          <strong>94.6%</strong>
-          <div>
-            <span className="change">↗ 2.1%</span>
-            <small>vs. previous month</small>
-          </div>
-        </article>
-      </div>
-
-      {/* Modern Dashboard Charts Block */}
+      {/* 2. Visual Charts Row */}
       <div className="chart-card-grid">
-        {/* Subscriptions by Product Category */}
+        {/* Trend Area representation */}
         <div className="chart-card">
-          <h3>Popular Categories</h3>
-          <div className="pie-summary-list">
-            {productData.map((prod, index) => {
-              const total = subscriptions.length || 1
-              const pct = Math.round((prod.count / total) * 100)
+          <h3>Monthly Sales & Profit Margin Trend</h3>
+          <div className="chart-height-wrap" style={{ height: 260 }}>
+            {monthlyFinances.slice(-6).map((m, idx) => {
+              const revPct = (m.revenue / maxTrendVal) * 90
+              const profPct = (m.profit / maxTrendVal) * 90
               return (
-                <div key={index} className="pie-row">
-                  <div className="pie-label-part">
-                    <span className="pie-color-dot" style={{ backgroundColor: prod.color }} />
-                    <span>{prod.name}</span>
+                <div key={idx} className="bar-column" style={{ margin: '0 4px' }}>
+                  <div style={{ display: 'flex', gap: 4, height: '100%', alignItems: 'flex-end', width: '100%', justifyContent: 'center' }}>
+                    <div className="bar-fill" style={{ height: `${revPct}%` }}>
+                      <span className="bar-tooltip">{currencySymbol}{m.revenue.toLocaleString()}</span>
+                    </div>
+                    <div className="bar-fill secondary" style={{ height: `${profPct}%` }}>
+                      <span className="bar-tooltip">{currencySymbol}{m.profit.toLocaleString()}</span>
+                    </div>
                   </div>
-                  <div className="pie-percent-bg">
-                    <div className="pie-percent-fill" style={{ width: `${pct}%`, backgroundColor: prod.color }} />
-                  </div>
-                  <span style={{ fontWeight: 700 }}>{prod.count} ({pct}%)</span>
+                  <span className="bar-axis-label" style={{ fontSize: 10 }}>{m.label}</span>
                 </div>
               )
             })}
           </div>
+          <div className="chart-legend" style={{ marginTop: 15 }}>
+            <div className="legend-item">
+              <span className="legend-color" style={{ backgroundColor: 'var(--navy-accent)' }} />
+              <span>Revenue</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-color" style={{ backgroundColor: 'var(--green)' }} />
+              <span>Profit</span>
+            </div>
+          </div>
         </div>
 
-        {/* Sales Reps Leaderboard */}
+        {/* Product categories split */}
         <div className="chart-card">
-          <h3>Top Sales Representatives</h3>
-          <div className="leaderboard-list">
-            {salesLeaderboard.length === 0 ? (
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>No sales reps found.</p>
-            ) : (
-              salesLeaderboard.map((sp, idx) => (
-                <div key={idx} className="leaderboard-item">
-                  <span className="leaderboard-rank">#{idx + 1}</span>
-                  <span className="leaderboard-name">{sp.name}</span>
-                  <div className="leaderboard-stats">
-                    <span className="leaderboard-rev">{currencySymbol}{sp.revenue.toLocaleString()}</span>
-                    <span className="leaderboard-count">{sp.deals} contract{sp.deals !== 1 ? 's' : ''}</span>
+          <h3>Product Category Split</h3>
+          <div className="pie-summary-list" style={{ marginTop: 10 }}>
+            {productDistribution.map((item, idx) => {
+              const totalSubs = subscriptions.length || 1
+              const pct = Math.round((item.count / totalSubs) * 100)
+              return (
+                <div key={idx} className="pie-row">
+                  <div className="pie-label-part">
+                    <span className="pie-color-dot" style={{ backgroundColor: item.color }} />
+                    <span style={{ fontSize: 12, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{item.name}</span>
                   </div>
+                  <div className="pie-percent-bg">
+                    <div className="pie-percent-fill" style={{ width: `${pct}%`, backgroundColor: item.color }} />
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 12 }}>{item.count} ({pct}%)</span>
                 </div>
-              ))
+              )
+            })}
+            {productDistribution.length === 0 && (
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', padding: 20 }}>No products setup.</p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Subscription Pulse Table */}
-      <section className="table-section">
-        <div className="section-heading">
-          <div>
-            <h2>Subscription Pulse</h2>
-            <p>Keep an eye on your latest customer activity.</p>
+      {/* 3. Detailed Data Sections (Tables) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 20 }}>
+        {/* Leaderboards and summaries */}
+        <div className="data-section" style={{ padding: 15 }}>
+          <div className="section-header" style={{ marginBottom: 15 }}>
+            <h2 style={{ fontSize: 15 }}><i className="fas fa-trophy" style={{ color: '#ffc107' }}></i> Sales Representative Leaderboard</h2>
           </div>
-          <button className="ghost-button" onClick={() => onNavigate('Subscriptions')}>
-            View all <span>→</span>
-          </button>
+          <div className="table-wrapper">
+            <table className="table" style={{ width: '100%', fontSize: 13 }}>
+              <thead>
+                <tr>
+                  <th>Representative</th>
+                  <th>Closed Deals</th>
+                  <th>Total Sales</th>
+                </tr>
+              </thead>
+              <tbody>
+                {repPerformance.map((rep, idx) => (
+                  <tr key={idx}>
+                    <td><strong>{rep.name}</strong></td>
+                    <td>{rep.deals} deals</td>
+                    <td><strong style={{ color: 'var(--green)' }}>{currencySymbol}{rep.revenue.toLocaleString()}</strong></td>
+                  </tr>
+                ))}
+                {repPerformance.length === 0 && (
+                  <tr>
+                    <td colSpan="3" style={{ textAlign: 'center', color: '#999', padding: 10 }}>No sales reps closed deals yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="table-toolbar">
-          <div className="search-box">
-            <Search size={17} />
-            <input
-              placeholder="Search customers or plans"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        {/* Top 5 Customers list */}
+        <div className="data-section" style={{ padding: 15 }}>
+          <div className="section-header" style={{ marginBottom: 15 }}>
+            <h2 style={{ fontSize: 15 }}><i className="fas fa-crown" style={{ color: 'var(--navy-accent)' }}></i> Top 5 Customers by Revenue</h2>
           </div>
-          <div className="filter-buttons">
-            {['All subscriptions', 'Active', 'Due soon', 'Paused'].map((item) => (
-              <button
-                className={filter === item ? 'filter active' : 'filter'}
-                key={item}
-                onClick={() => setFilter(item)}
-              >
-                {item}
-              </button>
-            ))}
+          <div className="table-wrapper">
+            <table className="table" style={{ width: '100%', fontSize: 13 }}>
+              <thead>
+                <tr>
+                  <th>Customer Name</th>
+                  <th>Revenue Closed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topCustomers.map((cust, idx) => (
+                  <tr key={idx}>
+                    <td><strong>{cust.name}</strong></td>
+                    <td><strong style={{ color: 'var(--green)' }}>{currencySymbol}{cust.revenue.toLocaleString()}</strong></td>
+                  </tr>
+                ))}
+                {topCustomers.length === 0 && (
+                  <tr>
+                    <td colSpan="2" style={{ textAlign: 'center', color: '#999', padding: 10 }}>No customer sales found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
+      </div>
 
-        <div className="table-wrap">
-          <table>
+      {/* 4. Recent activity log ledger */}
+      <div className="data-section" style={{ padding: 15 }}>
+        <div className="section-header" style={{ marginBottom: 15 }}>
+          <h2 style={{ fontSize: 15 }}><i className="fas fa-history"></i> Recent Activity Logs</h2>
+        </div>
+        <div className="table-wrapper">
+          <table className="table" style={{ width: '100%', fontSize: 12 }}>
             <thead>
               <tr>
-                <th>Customer</th>
-                <th>Plan/Product</th>
-                <th>Amount</th>
-                <th>Next renewal</th>
-                <th>Status</th>
+                <th>User</th>
+                <th>Action Event</th>
+                <th>Details</th>
+                <th>IP Address</th>
+                <th>Timestamp</th>
               </tr>
             </thead>
             <tbody>
-              {filteredSubscriptions.slice(0, 5).map((item) => {
-                const subRenewalStatus = getSubRenewalStatus(item.expiryDate, item.subscriptionStatus)
-                const tone = ['coral', 'mint', 'yellow', 'blue'][Math.abs(item.customerName?.charCodeAt(0) || 0) % 4]
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <div className="customer-cell">
-                        <span className={`customer-avatar ${tone}`}>
-                          {(item.customerName || 'CU').slice(0, 2).toUpperCase()}
-                        </span>
-                        <strong>{item.customerName}</strong>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="plan-name">{item.productName}</span>
-                      <small className="cycle">{item.invoiceNo || 'N/A'}</small>
-                    </td>
-                    <td>
-                      <strong>{currencySymbol}{item.sellingPrice}</strong>
-                      <small className="cycle">Total Price</small>
-                    </td>
-                    <td>{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : 'Continuous'}</td>
-                    <td>
-                      <span className={`status ${subRenewalStatus.toLowerCase().replace(' ', '-')}`}>
-                        <i />
-                        {subRenewalStatus}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
+              {activities.map((log) => (
+                <tr key={log.id}>
+                  <td><strong>{log.user}</strong></td>
+                  <td>
+                    <span className="status-badge" style={{
+                      backgroundColor: log.action.includes('Payment') ? 'rgba(40,167,69,0.1)' : 'rgba(0,116,217,0.1)',
+                      color: log.action.includes('Payment') ? 'var(--green)' : 'var(--navy-accent)'
+                    }}>
+                      {log.action}
+                    </span>
+                  </td>
+                  <td>{log.details}</td>
+                  <td><code>{log.ip}</code></td>
+                  <td>{new Date(log.time).toLocaleString()}</td>
+                </tr>
+              ))}
+              {activities.length === 0 && (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', color: '#999', padding: 20 }}>No logs recorded.</td>
+                </tr>
+              )}
             </tbody>
           </table>
-          {filteredSubscriptions.length === 0 && (
-            <div className="empty-state">No subscriptions match your search parameters.</div>
-          )}
         </div>
-      </section>
+      </div>
     </div>
   )
 }

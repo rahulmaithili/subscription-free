@@ -3,35 +3,6 @@ import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore'
 import { auth, db, isFirebaseConfigured } from './firebase'
 
-// Lucide-react Icons
-import {
-  Activity,
-  Bell,
-  CalendarDays,
-  ChevronDown,
-  Menu,
-  MoreHorizontal,
-  Plus,
-  Settings2,
-  ShieldCheck,
-  X,
-  LogOut,
-  Moon,
-  Sun,
-  LayoutDashboard,
-  FileText,
-  Kanban,
-  Calendar,
-  CreditCard,
-  Users as UsersIcon,
-  Truck,
-  Tag,
-  UserCheck,
-  PieChart,
-  ShieldAlert,
-  Loader
-} from 'lucide-react'
-
 // Components
 import Login from './components/Login'
 import SetupAssistant from './components/SetupAssistant'
@@ -55,10 +26,15 @@ export default function App() {
 
   // Navigation & UI state
   const [activeNav, setActiveNav] = useState('Dashboard')
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [dbSeeded, setDbSeeded] = useState(true)
   const [currencySymbol, setCurrencySymbol] = useState('₹')
   const [darkMode, setDarkMode] = useState(false)
+  const [showAddSubscription, setShowAddSubscription] = useState(false)
+
+  // Alarm badges count from Subscriptions
+  const [expiredCount, setExpiredCount] = useState(0)
+  const [expiringCount, setExpiringCount] = useState(0)
 
   // 1. Monitor Authentication State
   useEffect(() => {
@@ -71,12 +47,10 @@ export default function App() {
       if (user) {
         setCurrentUser(user)
         try {
-          // Fetch additional profile data from Firestore
           const docRef = doc(db, 'users', user.uid)
           const docSnap = await getDoc(docRef)
           if (docSnap.exists()) {
-            const profile = docSnap.data()
-            setUserProfile(profile)
+            setUserProfile(docSnap.data())
           } else {
             setUserProfile({
               uid: user.uid,
@@ -93,7 +67,6 @@ export default function App() {
             setDbSeeded(false)
           } else {
             setDbSeeded(true)
-            // Load currency symbol preference
             const currencyDoc = settingsSnap.docs.find(d => d.id === 'currency')
             if (currencyDoc) {
               setCurrencySymbol(currencyDoc.data().value || '₹')
@@ -113,10 +86,56 @@ export default function App() {
     return unsubscribe
   }, [])
 
-  // 2. Manage dark mode stylesheet state
+  // 2. Fetch alerting counts for badge
+  useEffect(() => {
+    if (!currentUser || !dbSeeded) return
+
+    async function fetchAlerts() {
+      try {
+        const snap = await getDocs(collection(db, 'subscriptions'))
+        const list = snap.docs.map(doc => doc.data())
+        
+        let expired = 0
+        let expiring = 0
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+
+        const limitDate = new Date()
+        limitDate.setDate(today.getDate() + 30)
+
+        list.forEach(sub => {
+          if (sub.subscriptionStatus !== 'active' || !sub.expiryDate) return
+          const exp = new Date(sub.expiryDate)
+          if (exp < today) {
+            expired++
+          } else if (exp >= today && exp <= limitDate) {
+            expiring++
+          }
+        })
+
+        setExpiredCount(expired)
+        setExpiringCount(expiring)
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    fetchAlerts()
+  }, [currentUser, dbSeeded, activeNav])
+
+  // Initialize visual theme
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme')
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+      document.body.classList.add('dark-mode')
+      setDarkMode(true)
+    }
+  }, [])
+
   const toggleDarkMode = () => {
-    setDarkMode(!darkMode)
-    document.body.classList.toggle('dark-mode')
+    const dark = document.body.classList.toggle('dark-mode')
+    localStorage.setItem('theme', dark ? 'dark' : 'light')
+    setDarkMode(dark)
   }
 
   const handleLogout = async () => {
@@ -125,28 +144,19 @@ export default function App() {
     }
   }
 
-  // Side Navigation bar item descriptors
-  const navItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={17} /> },
-    { name: 'Subscriptions', icon: <FileText size={17} /> },
-    { name: 'Kanban Board', icon: <Kanban size={17} /> },
-    { name: 'Calendar', icon: <Calendar size={17} /> },
-    { name: 'Payments', icon: <CreditCard size={17} /> },
-    { name: 'Customers', icon: <UsersIcon size={17} /> },
-    { name: 'Suppliers', icon: <Truck size={17} /> },
-    { name: 'Products', icon: <Tag size={17} /> },
-    { name: 'Sales Persons', icon: <UserCheck size={17} /> },
-    { name: 'Reports', icon: <PieChart size={17} /> },
-    { name: 'Users', icon: <ShieldAlert size={17} /> }
-  ]
+  const totalAlerts = expiredCount + expiringCount
 
   // Render Component depending on selected sidebar nav option
   const renderContent = () => {
-    switch (activeNav) {
+    // If Add Subscription menu clicked, we show Subscriptions and trigger modal auto-open
+    const forceOpenAdd = activeNav === 'Add Subscription'
+    const viewName = forceOpenAdd ? 'Subscriptions' : activeNav
+
+    switch (viewName) {
       case 'Dashboard':
         return <Dashboard user={userProfile} currencySymbol={currencySymbol} onNavigate={setActiveNav} />
       case 'Subscriptions':
-        return <Subscriptions user={userProfile} currencySymbol={currencySymbol} />
+        return <Subscriptions user={userProfile} currencySymbol={currencySymbol} autoOpenAdd={forceOpenAdd} />
       case 'Kanban Board':
         return <KanbanBoard currencySymbol={currencySymbol} />
       case 'Calendar':
@@ -166,7 +176,6 @@ export default function App() {
       case 'Users':
         return <Users />
       case 'Settings':
-      case 'Team':
         return <Settings currencySymbol={currencySymbol} onCurrencyChange={setCurrencySymbol} />
       default:
         return <Dashboard user={userProfile} currencySymbol={currencySymbol} onNavigate={setActiveNav} />
@@ -175,21 +184,19 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div style={{ display: 'grid', placeItems: 'center', height: '100vh', backgroundColor: 'var(--cream)', color: 'var(--text-muted)' }}>
+      <div style={{ display: 'grid', placeItems: 'center', height: '100vh', background: '#001f3f', color: '#fff' }}>
         <div style={{ textAlign: 'center' }}>
-          <Loader className="spinner" size={32} style={{ marginBottom: 10, color: 'var(--navy-accent)' }} />
-          <p style={{ fontSize: 13, fontWeight: 500 }}>Authenticating Connection...</p>
+          <i className="fas fa-spinner fa-spin fa-2x" style={{ marginBottom: 12, color: '#0074D9' }}></i>
+          <p style={{ fontSize: 14, fontWeight: 600 }}>Loading Session...</p>
         </div>
       </div>
     )
   }
 
-  // 3. Auth Check Route redirection
   if (!currentUser) {
     return <Login onLoginSuccess={(profile) => setUserProfile(profile)} />
   }
 
-  // 4. Seeding onboarding Check
   if (!dbSeeded) {
     return (
       <div className="auth-container">
@@ -198,117 +205,193 @@ export default function App() {
     )
   }
 
+  const defaultProfileLogo = 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiGXxCe0WNNedmFqSWeF761f7Kshhc-NP5ChRQKz9fr97cO8VaarvD0KlCwqHojJVBWv-RAxfOqMI5rD4H78KnARyOc6QgwL1nRRFWf5xNQ1d9F9HfAoLPPGlTyP0GwNl4n-INMEsWLQ4Y7zJtz5bOdAnc2ePH9-uCRgshlo6BsS6gJEz6fhrxL-5U5O3sX/s160/channels4_profile.jpg'
+
+  const isAdmin = userProfile?.role === 'admin'
+
   return (
-    <div className="app-shell">
-      {/* Sidebar Navigation */}
-      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
-        <div className="brand">
-          <span className="brand-mark">S</span>
-          <span>subscriptly</span>
-          <button className="icon-button close-menu" onClick={() => setMenuOpen(false)} aria-label="Close menu">
-            <X size={18} />
+    <div className="app-container">
+      {/* Collapsible Sidebar matches PHP visual structures */}
+      <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} id="sidebar">
+        <div className="sidebar-header">
+          <div className="sidebar-title">
+            <i className="fas fa-tachometer-alt"></i>
+            <span className="sidebar-title-text">Dashboard</span>
+          </div>
+          <button className="sidebar-toggle-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle Sidebar">
+            <i className={`fas ${sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`} id="sidebarToggleIcon"></i>
           </button>
         </div>
 
-        <div className="workspace-switcher">
-          <span className="workspace-dot">HQ</span>
-          <span>
-            <strong>Northstar HQ</strong>
-            <small>Workspace Hub</small>
-          </span>
-          <ChevronDown size={16} />
+        <div className="sidebar-logo-section">
+          <img src={defaultProfileLogo} alt="Profile" className="sidebar-logo" />
         </div>
 
-        <p className="nav-label">Workspace</p>
-        <nav>
-          {navItems.map((item) => (
+        {/* User Info labels inside Sidebar */}
+        {!sidebarCollapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 15 }}>
+            <span className="sidebar-user-name">{userProfile?.fullName || 'Administrator'}</span>
+            <span className="sidebar-user-role">{userProfile?.role || 'Admin'}</span>
+          </div>
+        )}
+
+        <div className="sidebar-menu-section" style={{ flex: 1, overflowY: 'auto' }}>
+          <ul className="sidebar-menu">
+            <li data-tooltip="Dashboard">
+              <a href="#" className={activeNav === 'Dashboard' ? 'active' : ''} onClick={() => setActiveNav('Dashboard')}>
+                <i className="fas fa-chart-line"></i>
+                <span>Dashboard</span>
+              </a>
+            </li>
+
+            <li data-tooltip="Subscriptions">
+              <a href="#" className={activeNav === 'Subscriptions' ? 'active' : ''} onClick={() => setActiveNav('Subscriptions')} style={{ position: 'relative' }}>
+                <i className="fas fa-file-contract"></i>
+                <span>Subscriptions</span>
+                {totalAlerts > 0 && (
+                  <span className={`sidebar-badge ${expiredCount > 0 ? 'badge-danger' : 'badge-warning'}`} title={`${expiredCount} expired, ${expiringCount} expiring soon`}>
+                    {totalAlerts}
+                  </span>
+                )}
+              </a>
+            </li>
+
+            <li data-tooltip="Kanban Board">
+              <a href="#" className={activeNav === 'Kanban Board' ? 'active' : ''} onClick={() => setActiveNav('Kanban Board')}>
+                <i className="fas fa-columns"></i>
+                <span>Kanban Board</span>
+              </a>
+            </li>
+
+            <li data-tooltip="Calendar">
+              <a href="#" className={activeNav === 'Calendar' ? 'active' : ''} onClick={() => setActiveNav('Calendar')}>
+                <i className="fas fa-calendar-alt"></i>
+                <span>Calendar</span>
+              </a>
+            </li>
+
+            <li data-tooltip="Add Subscription">
+              <a href="#" className={activeNav === 'Add Subscription' ? 'active' : ''} onClick={() => setActiveNav('Add Subscription')}>
+                <i className="fas fa-plus-circle"></i>
+                <span>Add Subscription</span>
+              </a>
+            </li>
+
+            <li data-tooltip="Payments">
+              <a href="#" className={activeNav === 'Payments' ? 'active' : ''} onClick={() => setActiveNav('Payments')}>
+                <i className="fas fa-money-bill-wave"></i>
+                <span>Payments</span>
+              </a>
+            </li>
+
+            {isAdmin && (
+              <>
+                <li data-tooltip="Customers">
+                  <a href="#" className={activeNav === 'Customers' ? 'active' : ''} onClick={() => setActiveNav('Customers')}>
+                    <i className="fas fa-address-book"></i>
+                    <span>Customers</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="Suppliers">
+                  <a href="#" className={activeNav === 'Suppliers' ? 'active' : ''} onClick={() => setActiveNav('Suppliers')}>
+                    <i className="fas fa-truck"></i>
+                    <span>Suppliers</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="Products">
+                  <a href="#" className={activeNav === 'Products' ? 'active' : ''} onClick={() => setActiveNav('Products')}>
+                    <i className="fas fa-box"></i>
+                    <span>Products</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="Sales Persons">
+                  <a href="#" className={activeNav === 'Sales Persons' ? 'active' : ''} onClick={() => setActiveNav('Sales Persons')}>
+                    <i className="fas fa-user-tie"></i>
+                    <span>Sales Persons</span>
+                  </a>
+                </li>
+              </>
+            )}
+
+            <li data-tooltip="Reports">
+              <a href="#" className={activeNav === 'Reports' ? 'active' : ''} onClick={() => setActiveNav('Reports')}>
+                <i className="fas fa-chart-bar"></i>
+                <span>Reports</span>
+              </a>
+            </li>
+
+            {isAdmin && (
+              <>
+                <li data-tooltip="Users">
+                  <a href="#" className={activeNav === 'Users' ? 'active' : ''} onClick={() => setActiveNav('Users')}>
+                    <i className="fas fa-users"></i>
+                    <span>Users</span>
+                  </a>
+                </li>
+
+                <li data-tooltip="Site Settings">
+                  <a href="#" className={activeNav === 'Settings' ? 'active' : ''} onClick={() => setActiveNav('Settings')}>
+                    <i className="fas fa-cog"></i>
+                    <span>Site Settings</span>
+                  </a>
+                </li>
+              </>
+            )}
+          </ul>
+        </div>
+
+        <div className="sidebar-logout">
+          <button onClick={handleLogout}>
+            <i className="fas fa-sign-out-alt"></i>
+            <span>Logout</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Layout with Theme Controls */}
+      <div className="main-content">
+        <div className="header">
+          <h1>
+            {activeNav === 'Dashboard' && <i className="fas fa-chart-line" />}
+            {activeNav === 'Subscriptions' && <i className="fas fa-file-contract" />}
+            {activeNav === 'Kanban Board' && <i className="fas fa-columns" />}
+            {activeNav === 'Calendar' && <i className="fas fa-calendar-alt" />}
+            {activeNav === 'Add Subscription' && <i className="fas fa-plus-circle" />}
+            {activeNav === 'Payments' && <i className="fas fa-money-bill-wave" />}
+            {activeNav === 'Customers' && <i className="fas fa-address-book" />}
+            {activeNav === 'Suppliers' && <i className="fas fa-truck" />}
+            {activeNav === 'Products' && <i className="fas fa-box" />}
+            {activeNav === 'Sales Persons' && <i className="fas fa-user-tie" />}
+            {activeNav === 'Reports' && <i className="fas fa-chart-bar" />}
+            {activeNav === 'Users' && <i className="fas fa-users" />}
+            {activeNav === 'Settings' && <i className="fas fa-cog" />}
+            <span style={{ marginLeft: 8 }}>{activeNav}</span>
+          </h1>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+            {/* Theme Toggle in Top Header */}
             <button
-              className={activeNav === item.name ? 'nav-item active' : 'nav-item'}
-              key={item.name}
-              onClick={() => {
-                setActiveNav(item.name)
-                setMenuOpen(false)
-              }}
+              onClick={toggleDarkMode}
+              title="Toggle Theme"
+              style={{ background: 'transparent', border: 0, color: 'var(--text-primary)', cursor: 'pointer', fontSize: 18 }}
             >
-              {item.icon}
-              <span>{item.name}</span>
+              <i className={darkMode ? 'fas fa-sun' : 'fas fa-moon'} />
             </button>
-          ))}
-        </nav>
 
-        <p className="nav-label secondary-label">Manage</p>
-        <nav>
-          <button
-            className={activeNav === 'Settings' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setActiveNav('Settings')
-              setMenuOpen(false)
-            }}
-          >
-            <Settings2 size={17} />
-            <span>Settings</span>
-          </button>
-          <button
-            className={activeNav === 'Team' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setActiveNav('Team')
-              setMenuOpen(false)
-            }}
-          >
-            <ShieldCheck size={17} />
-            <span>Team access</span>
-          </button>
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="profile">
-            <span className="avatar">{(userProfile?.fullName || 'AD').slice(0,2).toUpperCase()}</span>
-            <span>
-              <strong>{userProfile?.fullName || 'Admin User'}</strong>
-              <small style={{ textTransform: 'capitalize' }}>{userProfile?.role || 'Administrator'}</small>
-            </span>
-            <button className="icon-button" onClick={handleLogout} title="Log Out" style={{ color: 'rgba(255,255,255,0.6)' }}>
-              <LogOut size={16} />
-            </button>
+            {/* User Indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+              <i className="fas fa-user-circle" style={{ fontSize: 18, color: 'var(--navy-accent)' }} />
+              <strong>{userProfile?.fullName}</strong>
+            </div>
           </div>
         </div>
-      </aside>
 
-      {/* Main Content Layout */}
-      <main className="main-content">
-        <header className="topbar">
-          <button className="icon-button menu-button" onClick={() => setMenuOpen(true)} aria-label="Open menu">
-            <Menu size={21} />
-          </button>
-
-          <div className="crumbs">
-            <span>Workspace</span>
-            <b>/</b>
-            <strong>{activeNav}</strong>
-          </div>
-
-          <div className="top-actions">
-            <button className="icon-button" onClick={toggleDarkMode} title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'} style={{ marginRight: 5 }}>
-              {darkMode ? <Sun size={19} /> : <Moon size={19} />}
-            </button>
-            <span className="live-state">
-              <i /> Live data
-            </span>
-            <button className="icon-button" aria-label="Notifications">
-              <Bell size={19} />
-              <i className="notification-dot" />
-            </button>
-            <button className="add-button" onClick={() => setActiveNav('Subscriptions')}>
-              <Plus size={17} />
-              <span>Actions</span>
-            </button>
-          </div>
-        </header>
-
-        <section className="content">
-          {renderContent()}
-        </section>
-      </main>
+        {/* Dynamic Inner Subcomponent View Container */}
+        {renderContent()}
+      </div>
     </div>
   )
 }

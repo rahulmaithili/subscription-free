@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
-import { DollarSign, BarChart2, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 
 export default function Reports({ currencySymbol = '₹' }) {
   const [subscriptions, setSubscriptions] = useState([])
@@ -29,7 +28,7 @@ export default function Reports({ currencySymbol = '₹' }) {
     fetchData()
   }, [])
 
-  // 1. Calculate main metrics
+  // Calculate metrics
   const totalRevenue = subscriptions.reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
   const totalCost = subscriptions.reduce((sum, s) => sum + (Number(s.purchasePrice) || 0), 0)
   const totalTax = subscriptions.reduce((sum, s) => sum + (Number(s.taxAmount) || 0), 0)
@@ -39,12 +38,11 @@ export default function Reports({ currencySymbol = '₹' }) {
     .filter((s) => s.paymentStatus !== 'Paid')
     .reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
 
-  // 2. Monthly revenue mapping (last 6 months)
+  // Monthly revenue breakdown
   const getMonthlyBreakdown = () => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     const result = {}
 
-    // Initialize last 6 months
     const d = new Date()
     for (let i = 5; i >= 0; i--) {
       const targetMonth = new Date(d.getFullYear(), d.getMonth() - i, 1)
@@ -53,10 +51,9 @@ export default function Reports({ currencySymbol = '₹' }) {
       result[key] = { label, revenue: 0, profit: 0 }
     }
 
-    // Populate data
     subscriptions.forEach((sub) => {
       if (!sub.invoiceDate) return
-      const monthKey = sub.invoiceDate.slice(0, 7) // 'YYYY-MM'
+      const monthKey = sub.invoiceDate.slice(0, 7)
       if (result[monthKey]) {
         const rev = Number(sub.sellingPrice) || 0
         const cost = Number(sub.purchasePrice) || 0
@@ -72,14 +69,14 @@ export default function Reports({ currencySymbol = '₹' }) {
   const monthlyReportData = getMonthlyBreakdown()
   const maxVal = Math.max(...monthlyReportData.map((d) => Math.max(d.revenue, d.profit)), 1000)
 
-  // 3. Product categories share
+  // Product category revenue share
   const productShare = products.map((prod) => {
     const list = subscriptions.filter((s) => s.productId === prod.id)
     const rev = list.reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
     return { name: prod.productName, revenue: rev, count: list.length, color: prod.colorCode || '#0074D9' }
   }).sort((a, b) => b.revenue - a.revenue)
 
-  // 4. Sales Rep performance
+  // Sales Rep performance
   const repPerformance = salespersons.map((sp) => {
     const list = subscriptions.filter((s) => s.salespersonId === sp.id)
     const rev = list.reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
@@ -87,7 +84,6 @@ export default function Reports({ currencySymbol = '₹' }) {
     const tax = list.reduce((sum, s) => sum + (Number(s.taxAmount) || 0), 0)
     const profit = rev - cost - tax
 
-    // commission is a percentage of (revenue - cost - tax) if positive
     const commission = profit > 0 ? (profit * (Number(sp.commissionRate) || 0)) / 100 : 0
 
     return { name: sp.name, rate: sp.commissionRate, count: list.length, revenue: rev, commission }
@@ -96,19 +92,15 @@ export default function Reports({ currencySymbol = '₹' }) {
   if (loading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', height: '50vh' }}>
-        <RefreshCw className="spinner" size={24} />
+        <i className="fas fa-spinner fa-spin fa-2x" style={{ color: 'var(--navy-accent)' }}></i>
       </div>
     )
   }
 
   return (
-    <div>
-      <div className="heading-row">
-        <div>
-          <p className="eyebrow">Workspace / Financial Reports</p>
-          <h1>Financial Reports</h1>
-          <p className="subheading">Analyze monthly revenues, margins, and sales rep commission payouts.</p>
-        </div>
+    <div className="data-section">
+      <div className="section-header">
+        <h2><i className="fas fa-chart-bar"></i> Financial Reports</h2>
       </div>
 
       <div className="reports-summary">
@@ -135,7 +127,6 @@ export default function Reports({ currencySymbol = '₹' }) {
       </div>
 
       <div className="chart-card-grid">
-        {/* Revenue & Profit Trends */}
         <div className="chart-card">
           <h3>Revenue & Profit Trend (Last 6 Months)</h3>
           <div className="chart-height-wrap">
@@ -169,7 +160,6 @@ export default function Reports({ currencySymbol = '₹' }) {
           </div>
         </div>
 
-        {/* Product share share list */}
         <div className="chart-card">
           <h3>Category Revenue Share</h3>
           <div className="pie-summary-list" style={{ marginTop: 10 }}>
@@ -195,48 +185,42 @@ export default function Reports({ currencySymbol = '₹' }) {
         </div>
       </div>
 
-      {/* Sales leaderboard and commission tracking */}
-      <section className="table-section" style={{ paddingBottom: 20 }}>
-        <div className="section-heading" style={{ marginBottom: 15 }}>
-          <div>
-            <h2>Sales Representative Commission Ledger</h2>
-            <p>Track closed deals, total sales, and payable commission (based on representative's rate applied to closed contract profits).</p>
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Representative Name</th>
-                <th>Commission Rate</th>
-                <th>Closed Deals</th>
-                <th>Total Sales Value</th>
-                <th>Payable Commission</th>
+      <div className="section-header" style={{ marginTop: 30, marginBottom: 15 }}>
+        <h2><i className="fas fa-list-alt"></i> Sales Representative Commission Ledger</h2>
+      </div>
+      <div className="table-wrapper">
+        <table className="table" style={{ width: '100%' }}>
+          <thead>
+            <tr>
+              <th>Representative Name</th>
+              <th>Commission Rate</th>
+              <th>Closed Deals</th>
+              <th>Total Sales Value</th>
+              <th>Payable Commission</th>
+            </tr>
+          </thead>
+          <tbody>
+            {repPerformance.map((item, idx) => (
+              <tr key={idx}>
+                <td><strong>{item.name}</strong></td>
+                <td>{item.rate}%</td>
+                <td>{item.count} deals</td>
+                <td><strong>{currencySymbol}{item.revenue.toLocaleString()}</strong></td>
+                <td>
+                  <span style={{ color: 'var(--green)', fontWeight: 700 }}>
+                    {currencySymbol}{Math.round(item.commission).toLocaleString()}
+                  </span>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {repPerformance.map((item, idx) => (
-                <tr key={idx}>
-                  <td><strong>{item.name}</strong></td>
-                  <td>{item.rate}%</td>
-                  <td>{item.count} deals</td>
-                  <td><strong>{currencySymbol}{item.revenue.toLocaleString()}</strong></td>
-                  <td>
-                    <span style={{ color: 'var(--green)', fontWeight: 700 }}>
-                      {currencySymbol}{item.commission.toLocaleString()}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {repPerformance.length === 0 && (
-                <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>No active representatives.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            ))}
+            {repPerformance.length === 0 && (
+              <tr>
+                <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>No active representatives.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

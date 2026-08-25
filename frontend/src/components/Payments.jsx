@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
-import { Search, Plus, Trash2, X, RefreshCw, DollarSign } from 'lucide-react'
 
 export default function Payments({ currencySymbol = '₹' }) {
   const [payments, setPayments] = useState([])
   const [subscriptions, setSubscriptions] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // Filters
+  const [filterInvoice, setFilterInvoice] = useState('')
+  const [filterCustomer, setFilterCustomer] = useState('')
+  const [filterMethod, setFilterMethod] = useState('')
 
   // Modal
   const [showModal, setShowModal] = useState(false)
@@ -18,13 +22,10 @@ export default function Payments({ currencySymbol = '₹' }) {
   const [formPaymentMethod, setFormPaymentMethod] = useState('Razorpay')
   const [formNotes, setFormNotes] = useState('')
 
-  // Search/Filters
-  const [search, setSearch] = useState('')
-
   const fetchData = async () => {
     try {
       const paySnap = await getDocs(collection(db, 'payments'))
-      setPayments(paySnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+      setPayments(paySnap.docs.map((doc, index) => ({ id: doc.id, index: index + 1, ...doc.data() })))
 
       const subSnap = await getDocs(collection(db, 'subscriptions'))
       setSubscriptions(subSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
@@ -106,116 +107,143 @@ export default function Payments({ currencySymbol = '₹' }) {
     }
   }
 
+  // Filter Logic
   const filteredPayments = payments.filter((pay) => {
-    const needle = search.toLowerCase()
-    return (
-      (pay.customerName || '').toLowerCase().includes(needle) ||
-      (pay.invoiceNo || '').toLowerCase().includes(needle) ||
-      (pay.paymentMethod || '').toLowerCase().includes(needle)
-    )
+    const matchInvoice = (pay.invoiceNo || '').toLowerCase().includes(filterInvoice.toLowerCase())
+    const matchCustomer = (pay.customerName || '').toLowerCase().includes(filterCustomer.toLowerCase())
+    const matchMethod = filterMethod ? pay.paymentMethod === filterMethod : true
+
+    return matchInvoice && matchCustomer && matchMethod
   })
 
-  // List of subscriptions that are unpaid, to display in form selection
-  const unpaidSubscriptions = subscriptions.filter((sub) => sub.paymentStatus !== 'Paid')
+  // Export CSV
+  const exportCSV = () => {
+    let csv = 'ID,Invoice No,Customer Name,Amount,Payment Date,Payment Method,Notes\n'
+    filteredPayments.forEach((p) => {
+      csv += `"${p.index}","${p.invoiceNo || ''}","${p.customerName || ''}","${p.amount || 0}","${p.paymentDate || ''}","${p.paymentMethod || ''}","${p.notes || ''}"\n`
+    })
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', 'payments_export.csv')
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   return (
-    <div>
-      <div className="heading-row">
+    <div className="data-section">
+      <div className="section-header">
+        <h2><i className="fas fa-money-bill-wave"></i> Payments Ledger</h2>
         <div>
-          <p className="eyebrow">Workspace / Payments</p>
-          <h1>Payments</h1>
-          <p className="subheading">Track incoming subscription payments, methods, dates and record new payments.</p>
+          <button className="btn btn-success" onClick={openAddModal} style={{ marginRight: 8 }}>
+            <i className="fas fa-plus-circle"></i> Add Payment Record
+          </button>
+          <button className="btn btn-primary" onClick={exportCSV}>
+            <i className="fas fa-file-csv"></i> Export CSV
+          </button>
         </div>
-        <button className="add-button" onClick={openAddModal}>
-          <Plus size={17} /> <span>Record Payment</span>
-        </button>
       </div>
 
-      <section className="table-section" style={{ minHeight: '60vh' }}>
-        <div className="table-toolbar">
-          <div className="search-box">
-            <Search size={17} />
-            <input
-              placeholder="Search by customer, invoice, method..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {loading ? (
-          <div style={{ display: 'grid', placeItems: 'center', height: '40vh' }}>
-            <RefreshCw className="spinner" size={24} />
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Invoice No</th>
-                  <th>Amount</th>
-                  <th>Payment Date</th>
-                  <th>Payment Method</th>
-                  <th>Notes</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPayments.map((item) => {
-                  const tone = ['coral', 'mint', 'yellow', 'blue'][Math.abs(item.customerName?.charCodeAt(0) || 0) % 4]
-                  return (
-                    <tr key={item.id}>
-                      <td>
-                        <div className="customer-cell">
-                          <span className={`customer-avatar ${tone}`}>
-                            {(item.customerName || 'CU').slice(0, 2).toUpperCase()}
-                          </span>
-                          <strong>{item.customerName}</strong>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="plan-name">{item.invoiceNo}</span>
-                      </td>
-                      <td>
-                        <strong>{currencySymbol}{item.amount.toLocaleString()}</strong>
-                      </td>
-                      <td>{new Date(item.paymentDate).toLocaleDateString()}</td>
-                      <td>
-                        <span className="status active" style={{ backgroundColor: 'rgba(0,116,217,0.1)', color: 'var(--navy-accent)' }}>
-                          {item.paymentMethod}
-                        </span>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.notes || '—'}</span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button className="icon-button" onClick={() => handleDelete(item.id)} aria-label="Delete">
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {filteredPayments.length === 0 && (
-              <div className="empty-state">No payment records found matching your query.</div>
-            )}
-          </div>
+      <div className="filters-row" style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        <input
+          type="text"
+          className="form-control"
+          placeholder="Filter by Invoice..."
+          value={filterInvoice}
+          onChange={(e) => setFilterInvoice(e.target.value)}
+          style={{ maxWidth: 200 }}
+        />
+        <input
+          type="text"
+          className="form-control"
+          placeholder="Filter by Customer..."
+          value={filterCustomer}
+          onChange={(e) => setFilterCustomer(e.target.value)}
+          style={{ maxWidth: 200 }}
+        />
+        <select
+          className="form-control"
+          value={filterMethod}
+          onChange={(e) => setFilterMethod(e.target.value)}
+          style={{ maxWidth: 150 }}
+        >
+          <option value="">All Methods</option>
+          <option value="Razorpay">Razorpay</option>
+          <option value="Stripe">Stripe</option>
+          <option value="PayPal">PayPal</option>
+          <option value="Cash">Cash</option>
+          <option value="Bank Transfer">Bank Transfer</option>
+        </select>
+        {(filterInvoice || filterCustomer || filterMethod) && (
+          <button className="btn btn-secondary" onClick={() => { setFilterInvoice(''); setFilterCustomer(''); setFilterMethod('') }}>
+            Clear Filters
+          </button>
         )}
-      </section>
+      </div>
 
-      {/* Record Payment Modal */}
+      {loading ? (
+        <div style={{ display: 'grid', placeItems: 'center', height: '40vh' }}>
+          <i className="fas fa-spinner fa-spin fa-2x" style={{ color: 'var(--navy-accent)' }}></i>
+        </div>
+      ) : (
+        <div className="table-wrapper">
+          <table className="table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ width: 50 }}>ID</th>
+                <th>Invoice No</th>
+                <th>Customer Name</th>
+                <th>Amount Paid</th>
+                <th>Payment Date</th>
+                <th>Payment Method</th>
+                <th>Notes</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPayments.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.index}</td>
+                  <td><code>{item.invoiceNo}</code></td>
+                  <td><strong>{item.customerName}</strong></td>
+                  <td><strong style={{ color: 'var(--green)' }}>{currencySymbol}{item.amount.toLocaleString()}</strong></td>
+                  <td>{item.paymentDate}</td>
+                  <td>
+                    <span className="status-badge pay-paid">
+                      {item.paymentMethod}
+                    </span>
+                  </td>
+                  <td>{item.notes || '-'}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button className="action-icon delete-icon" title="Delete" style={{ color: '#dc3545', border: 0, background: 'transparent', cursor: 'pointer' }} onClick={() => handleDelete(item.id)}>
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredPayments.length === 0 && (
+                <tr>
+                  <td colSpan="8" style={{ textAlign: 'center', color: '#999', padding: 20 }}>No payment transactions found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add Payment Modal */}
       {showModal && (
-        <div className="modal-overlay">
+        <div className="modal-overlay active">
           <div className="modal-container">
             <div className="modal-header">
-              <h3>Record Subscription Payment</h3>
-              <button className="icon-button" onClick={() => setShowModal(false)}><X size={18} /></button>
+              <h3><i className="fas fa-money-bill-wave"></i> Add Payment Record</h3>
+              <button className="icon-button" onClick={() => setShowModal(false)}><i className="fas fa-times"></i></button>
             </div>
             <form onSubmit={handleSave}>
-              <div className="modal-body">
+              <div className="modal-body" style={{ maxHeight: '65vh' }}>
                 <div className="form-group">
                   <label>Select Unpaid Subscription *</label>
                   <select
@@ -224,68 +252,71 @@ export default function Payments({ currencySymbol = '₹' }) {
                     onChange={(e) => handleSubscriptionChange(e.target.value)}
                     required
                   >
-                    <option value="">-- Select Subscription --</option>
-                    {unpaidSubscriptions.map((sub) => (
-                      <option key={sub.id} value={sub.id}>
-                        {sub.customerName} - {sub.productName} ({sub.invoiceNo}) - {currencySymbol}{sub.sellingPrice}
-                      </option>
-                    ))}
+                    <option value="">-- Choose Contract --</option>
+                    {subscriptions
+                      .filter((s) => s.paymentStatus !== 'Paid')
+                      .map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.invoiceNo} - {sub.customerName} ({currencySymbol}{sub.sellingPrice})
+                        </option>
+                      ))}
                   </select>
                 </div>
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Amount Paid ({currencySymbol}) *</label>
+                    <label>Amount Paid *</label>
                     <input
                       type="number"
-                      step="any"
                       className="form-control"
+                      placeholder="Enter amount"
                       value={formAmount}
                       onChange={(e) => setFormAmount(e.target.value)}
                       required
                     />
                   </div>
                   <div className="form-group">
-                    <label>Payment Date *</label>
-                    <input
-                      type="date"
+                    <label>Payment Method *</label>
+                    <select
                       className="form-control"
-                      value={formPaymentDate}
-                      onChange={(e) => setFormPaymentDate(e.target.value)}
+                      value={formPaymentMethod}
+                      onChange={(e) => setFormPaymentMethod(e.target.value)}
                       required
-                    />
+                    >
+                      <option value="Razorpay">Razorpay</option>
+                      <option value="Stripe">Stripe</option>
+                      <option value="PayPal">PayPal</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                    </select>
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label>Payment Method *</label>
-                  <select
+                  <label>Payment Date *</label>
+                  <input
+                    type="date"
                     className="form-control"
-                    value={formPaymentMethod}
-                    onChange={(e) => setFormPaymentMethod(e.target.value)}
+                    value={formPaymentDate}
+                    onChange={(e) => setFormPaymentDate(e.target.value)}
                     required
-                  >
-                    <option value="Razorpay">Razorpay</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Other">Other</option>
-                  </select>
+                  />
                 </div>
 
                 <div className="form-group">
-                  <label>Payment Notes</label>
+                  <label>Notes / Comments</label>
                   <textarea
                     className="form-control"
-                    placeholder="Enter transaction details, checks references, etc."
+                    placeholder="Enter transaction notes..."
                     value={formNotes}
                     onChange={(e) => setFormNotes(e.target.value)}
+                    style={{ height: 60 }}
                   />
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Record Payment</button>
+                <button type="submit" className="btn btn-primary">Save Changes</button>
               </div>
             </form>
           </div>

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
-import { Search, Plus, Edit2, Trash2, X, RefreshCw, UserCheck, ShieldAlert } from 'lucide-react'
 
 export default function Users() {
   const [users, setUsers] = useState([])
@@ -25,7 +24,7 @@ export default function Users() {
   const fetchData = async () => {
     try {
       const snap = await getDocs(collection(db, 'users'))
-      setUsers(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+      setUsers(snap.docs.map((doc, idx) => ({ id: doc.id, index: idx + 1, ...doc.data() })))
     } catch (err) {
       console.error(err)
     } finally {
@@ -77,8 +76,6 @@ export default function Users() {
       if (editingUser) {
         await updateDoc(doc(db, 'users', editingUser.id), userData)
       } else {
-        // Generates user profile in Firestore
-        // Note: New users will still need to register via signup using this email to log in
         await addDoc(collection(db, 'users'), {
           ...userData,
           createdAt: new Date().toISOString()
@@ -127,114 +124,102 @@ export default function Users() {
   })
 
   return (
-    <div>
-      <div className="heading-row">
-        <div>
-          <p className="eyebrow">Workspace / User Roles</p>
-          <h1>Users & Team Access</h1>
-          <p className="subheading">Configure system user roles (Admins, Salespersons, Customers) and accounts settings.</p>
-        </div>
-        <button className="add-button" onClick={openAddModal}>
-          <Plus size={17} /> <span>Create User Profile</span>
+    <div className="data-section">
+      <div className="section-header">
+        <h2><i className="fas fa-users"></i> Users & Access Control</h2>
+        <button className="btn btn-success" onClick={openAddModal}>
+          <i className="fas fa-plus"></i> Create User Profile
         </button>
       </div>
 
-      <section className="table-section" style={{ minHeight: '60vh' }}>
-        <div className="table-toolbar">
-          <div className="search-box">
-            <Search size={17} />
-            <input
-              placeholder="Search by name, email, role..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
+      <div className="filters-row" style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        <input
+          type="text"
+          className="form-control"
+          placeholder="Search by name, email, role..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ maxWidth: 300 }}
+        />
+      </div>
 
-        {loading ? (
-          <div style={{ display: 'grid', placeItems: 'center', height: '40vh' }}>
-            <RefreshCw className="spinner" size={24} />
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>User Profile</th>
-                  <th>Email Credentials</th>
-                  <th>Phone Number</th>
-                  <th>Role</th>
-                  <th>Department</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+      {loading ? (
+        <div style={{ display: 'grid', placeItems: 'center', height: '40vh' }}>
+          <i className="fas fa-spinner fa-spin fa-2x" style={{ color: 'var(--navy-accent)' }}></i>
+        </div>
+      ) : (
+        <div className="table-wrapper">
+          <table className="table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ width: 50 }}>ID</th>
+                <th>Full Name</th>
+                <th>Email Credentials</th>
+                <th>Phone Number</th>
+                <th>Role</th>
+                <th>Department</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.index}</td>
+                  <td><strong>{item.fullName}</strong></td>
+                  <td>{item.email}</td>
+                  <td>{item.phone || '-'}</td>
+                  <td>
+                    <span className="status-badge" style={{
+                      textTransform: 'capitalize',
+                      backgroundColor: item.role === 'admin' ? 'rgba(234,67,53,0.1)' : item.role === 'salesperson' ? 'rgba(52,168,83,0.1)' : 'rgba(0,116,217,0.1)',
+                      color: item.role === 'admin' ? 'var(--danger)' : item.role === 'salesperson' ? 'var(--green)' : 'var(--navy-accent)',
+                      fontWeight: 700
+                    }}>
+                      {item.role}
+                    </span>
+                  </td>
+                  <td>{item.department || '-'}</td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={item.isActive !== false}
+                      className="toggle"
+                      style={{ cursor: 'pointer' }}
+                      onChange={() => toggleActiveStatus(item)}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', gap: 6 }}>
+                      <button className="action-icon edit-icon" title="Edit" style={{ color: '#ffc107', border: 0, background: 'transparent', cursor: 'pointer' }} onClick={() => openEditModal(item)}>
+                        <i className="fas fa-edit"></i>
+                      </button>
+                      <button className="action-icon delete-icon" title="Delete" style={{ color: '#dc3545', border: 0, background: 'transparent', cursor: 'pointer' }} onClick={() => handleDelete(item.id)}>
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((item) => {
-                  const tone = ['coral', 'mint', 'yellow', 'blue'][Math.abs(item.fullName?.charCodeAt(0) || 0) % 4]
-                  return (
-                    <tr key={item.id}>
-                      <td>
-                        <div className="customer-cell">
-                          <span className={`customer-avatar ${tone}`}>
-                            {(item.fullName || 'US').slice(0, 2).toUpperCase()}
-                          </span>
-                          <strong>{item.fullName}</strong>
-                        </div>
-                      </td>
-                      <td>{item.email}</td>
-                      <td>{item.phone || '—'}</td>
-                      <td>
-                        <span className="status" style={{
-                          textTransform: 'capitalize',
-                          backgroundColor: item.role === 'admin' ? 'rgba(234,67,53,0.1)' : item.role === 'salesperson' ? 'rgba(52,168,83,0.1)' : 'rgba(0,116,217,0.1)',
-                          color: item.role === 'admin' ? 'var(--danger)' : item.role === 'salesperson' ? 'var(--green)' : 'var(--navy-accent)',
-                          fontWeight: 700
-                        }}>
-                          {item.role}
-                        </span>
-                      </td>
-                      <td>{item.department || '—'}</td>
-                      <td>
-                        <button
-                          className={`status ${item.isActive ? 'active' : 'paused'}`}
-                          style={{ cursor: 'pointer', border: 0 }}
-                          onClick={() => toggleActiveStatus(item)}
-                          title="Click to toggle status"
-                        >
-                          <i />
-                          {item.isActive ? 'Active' : 'Inactive'}
-                        </button>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: 8 }}>
-                          <button className="icon-button" onClick={() => openEditModal(item)} aria-label="Edit">
-                            <Edit2 size={16} />
-                          </button>
-                          <button className="icon-button" onClick={() => handleDelete(item.id)} aria-label="Delete">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {filteredUsers.length === 0 && (
-              <div className="empty-state">No user profiles found.</div>
-            )}
-          </div>
-        )}
-      </section>
+              ))}
+              {filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan="8" style={{ textAlign: 'center', color: '#999', padding: 20 }}>No user profiles found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Add/Edit User Modal */}
       {showModal && (
-        <div className="modal-overlay">
+        <div className="modal-overlay active">
           <div className="modal-container">
             <div className="modal-header">
-              <h3>{editingUser ? 'Edit User Credentials' : 'Create User Profile'}</h3>
-              <button className="icon-button" onClick={() => setShowModal(false)}><X size={18} /></button>
+              <h3>
+                <i className={editingUser ? 'fas fa-edit' : 'fas fa-users'}></i> {editingUser ? 'Edit User Credentials' : 'Create User Profile'}
+              </h3>
+              <button className="icon-button" onClick={() => setShowModal(false)}><i className="fas fa-times"></i></button>
             </div>
             <form onSubmit={handleSave}>
               <div className="modal-body" style={{ maxHeight: '65vh' }}>
@@ -295,7 +280,7 @@ export default function Users() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-control-checkbox">
+                  <label className="form-control-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <input
                       type="checkbox"
                       checked={formIsActive}

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { collection, doc, getDocs, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import SetupAssistant from './SetupAssistant'
-import { Settings2, RefreshCw, CheckCircle, Database } from 'lucide-react'
 
 export default function Settings({ currencySymbol, onCurrencyChange }) {
   const [settings, setSettings] = useState([])
@@ -11,7 +10,7 @@ export default function Settings({ currencySymbol, onCurrencyChange }) {
   const [successMsg, setSuccessMsg] = useState('')
 
   // Sub-tab state
-  const [activeSubTab, setActiveSubTab] = useState('general') // general, database
+  const [activeSubTab, setActiveSubTab] = useState('general')
 
   // Form Fields mapped to settings keys
   const [fields, setFields] = useState({
@@ -30,7 +29,6 @@ export default function Settings({ currencySymbol, onCurrencyChange }) {
       const settingList = snap.docs.map((doc) => ({ key: doc.id, ...doc.data() }))
       setSettings(settingList)
 
-      // Map setting list to input fields state
       const mappedFields = { ...fields }
       settingList.forEach((item) => {
         if (mappedFields[item.key] !== undefined) {
@@ -59,7 +57,6 @@ export default function Settings({ currencySymbol, onCurrencyChange }) {
     setSuccessMsg('')
 
     try {
-      // Write batch updates to Firestore system_settings collection
       for (const [key, value] of Object.entries(fields)) {
         const ref = doc(db, 'system_settings', key)
         await updateDoc(ref, { value })
@@ -83,48 +80,50 @@ export default function Settings({ currencySymbol, onCurrencyChange }) {
   if (loading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', height: '50vh' }}>
-        <RefreshCw className="spinner" size={24} />
+        <i className="fas fa-spinner fa-spin fa-2x" style={{ color: 'var(--navy-accent)' }}></i>
       </div>
     )
   }
 
   return (
-    <div>
-      <div className="heading-row">
-        <div>
-          <p className="eyebrow">Workspace / Settings</p>
-          <h1>System Settings</h1>
-          <p className="subheading">Configure company profiles, local currency parameters, tax values, and seed demo databases.</p>
-        </div>
+    <div className="data-section">
+      <div className="section-header">
+        <h2><i className="fas fa-cog"></i> Site Settings</h2>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, marginBottom: 25, borderBottom: '1px solid var(--line)', paddingBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 20, marginBottom: 25, borderBottom: '1px solid var(--border-color)', paddingBottom: 10 }}>
         <button
-          className={activeSubTab === 'general' ? 'ghost-button active-tab' : 'ghost-button'}
-          style={{ fontWeight: activeSubTab === 'general' ? 700 : 500, fontSize: 13, borderBottom: activeSubTab === 'general' ? '2px solid var(--navy-accent)' : 'none', padding: '8px 16px' }}
+          className="btn"
+          style={{
+            background: activeSubTab === 'general' ? 'var(--navy-accent)' : 'transparent',
+            color: activeSubTab === 'general' ? '#fff' : 'var(--text-primary)',
+            border: activeSubTab === 'general' ? 'none' : '1px solid var(--border-color)'
+          }}
           onClick={() => setActiveSubTab('general')}
         >
           General Parameters
         </button>
         <button
-          className={activeSubTab === 'database' ? 'ghost-button active-tab' : 'ghost-button'}
-          style={{ fontWeight: activeSubTab === 'database' ? 700 : 500, fontSize: 13, borderBottom: activeSubTab === 'database' ? '2px solid var(--navy-accent)' : 'none', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}
+          className="btn"
+          style={{
+            background: activeSubTab === 'database' ? 'var(--navy-accent)' : 'transparent',
+            color: activeSubTab === 'database' ? '#fff' : 'var(--text-primary)',
+            border: activeSubTab === 'database' ? 'none' : '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}
           onClick={() => setActiveSubTab('database')}
         >
-          <Database size={14} /> Database Seeding
+          <i className="fas fa-database"></i> Database Seeding
         </button>
       </div>
 
       {activeSubTab === 'general' && (
-        <section className="table-section" style={{ maxWidth: 800 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 25 }}>
-            <Settings2 size={18} style={{ color: 'var(--navy-accent)' }} />
-            <h2 style={{ fontSize: 15, margin: 0 }}>Business Configurations</h2>
-          </div>
-
+        <div style={{ maxWidth: 800 }}>
           {successMsg && (
-            <div className="alert-box success">
-              <CheckCircle size={16} />
+            <div className="alert-box success" style={{ marginBottom: 15 }}>
+              <i className="fas fa-check-circle" style={{ marginRight: 8 }}></i>
               <span>{successMsg}</span>
             </div>
           )}
@@ -220,13 +219,13 @@ export default function Settings({ currencySymbol, onCurrencyChange }) {
               {updating ? 'Saving changes...' : 'Save Settings'}
             </button>
           </form>
-        </section>
+        </div>
       )}
 
       {activeSubTab === 'database' && (
-        <section className="table-section" style={{ maxWidth: 800 }}>
+        <div style={{ maxWidth: 800 }}>
           <SetupAssistant onSetupComplete={fetchSettings} />
-        </section>
+        </div>
       )}
     </div>
   )
