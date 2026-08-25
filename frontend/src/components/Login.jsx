@@ -1,102 +1,128 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { auth, db } from '../firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
 import { doc, getDoc, setDoc, collection, getDocs, query, limit } from 'firebase/firestore'
-import { Shield, Mail, Lock, User, Phone, LogIn, AlertCircle } from 'lucide-react'
+import { User, Lock, ArrowRight, AlertCircle, RefreshCw, CheckCircle, Sun, Moon } from 'lucide-react'
 
 export default function Login({ onLoginSuccess }) {
-  const [isSignUp, setIsSignUp] = useState(false)
-  const [isForgot, setIsForgot] = useState(false)
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
-  const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
+  const [isForgot, setIsForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
 
-  const handleAuth = async (e) => {
+  // Theme Toggle State
+  const [isDark, setIsDark] = useState(false)
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme')
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+      document.body.classList.add('dark-mode')
+      setIsDark(true)
+    }
+  }, [])
+
+  const toggleTheme = () => {
+    const dark = document.body.classList.toggle('dark-mode')
+    localStorage.setItem('theme', dark ? 'dark' : 'light')
+    setIsDark(dark)
+  }
+
+  // Map simple usernames to emails for Firebase Auth
+  const mapUsernameToEmail = (userVal) => {
+    const trimmed = userVal.trim().toLowerCase()
+    if (trimmed.includes('@')) return trimmed
+    if (trimmed === 'admin') return 'admin@demo.com'
+    if (trimmed === 'sales1') return 'salesperson1@demo.com'
+    if (trimmed === 'customer1') return 'company1@demo.com'
+    return `${trimmed}@demo.com`
+  }
+
+  const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
-    setMessage('')
+    setSuccessMsg('')
     setLoading(true)
+
+    const email = mapUsernameToEmail(username)
 
     try {
       if (isForgot) {
-        // Send reset email
-        await sendPasswordResetEmail(auth, email)
-        setMessage('Password reset email sent. Please check your inbox.')
+        await sendPasswordResetEmail(auth, forgotEmail)
+        setSuccessMsg('Password reset link sent! Check your inbox.')
+        setIsForgot(false)
         setLoading(false)
         return
       }
 
-      if (isSignUp) {
-        // Create new user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-        const user = userCredential.user
-
-        // Check if this is the first user in the database
-        const usersQuery = query(collection(db, 'users'), limit(1))
-        const usersSnap = await getDocs(usersQuery)
-        const isFirstUser = usersSnap.empty
-
-        // User role is 'admin' for the first user, 'customer' for subsequent ones
-        const role = isFirstUser ? 'admin' : 'customer'
-
-        // Save profile in Firestore
-        const profile = {
-          uid: user.uid,
-          email: user.email,
-          fullName: fullName || email.split('@')[0],
-          phone: phone || '',
-          role: role,
-          isActive: true,
-          createdAt: new Date().toISOString()
+      let userCredential
+      try {
+        // Attempt normal login
+        userCredential = await signInWithEmailAndPassword(auth, email, password)
+      } catch (signInErr) {
+        // If user not found and they are trying to log in with default credentials,
+        // automatically register them in Firebase Auth
+        const defaultUsers = {
+          'admin@demo.com': { password: 'admin123', fullName: 'Admin User', role: 'admin' },
+          'salesperson1@demo.com': { password: 'sales123', fullName: 'Salesperson 1', role: 'salesperson' },
+          'company1@demo.com': { password: 'cust123', fullName: 'Company 1 Portal', role: 'customer' }
         }
 
-        await setDoc(doc(db, 'users', user.uid), profile)
-        onLoginSuccess(profile)
-      } else {
-        // Login existing user
-        const userCredential = await signInWithEmailAndPassword(auth, email, password)
-        const user = userCredential.user
+        if (defaultUsers[email] && defaultUsers[email].password === password) {
+          // Register demo user
+          userCredential = await createUserWithEmailAndPassword(auth, email, password)
+          const user = userCredential.user
 
-        // Fetch Firestore profile
-        const docRef = doc(db, 'users', user.uid)
-        const docSnap = await getDoc(docRef)
-
-        if (docSnap.exists()) {
-          const profile = docSnap.data()
-          if (!profile.isActive) {
-            await signOut(auth)
-            throw new Error('Your account has been deactivated. Please contact an administrator.')
-          }
-          onLoginSuccess(profile)
-        } else {
-          // If Firestore profile doesn't exist (e.g. login created via Firebase Console)
-          // we create a default admin profile for it
+          // Set profile in Firestore
           const profile = {
             uid: user.uid,
-            email: user.email,
-            fullName: user.displayName || email.split('@')[0],
+            email: email,
+            fullName: defaultUsers[email].fullName,
             phone: '',
-            role: 'admin',
+            role: defaultUsers[email].role,
             isActive: true,
             createdAt: new Date().toISOString()
           }
           await setDoc(doc(db, 'users', user.uid), profile)
-          onLoginSuccess(profile)
+        } else {
+          throw signInErr
         }
+      }
+
+      const user = userCredential.user
+
+      // Retrieve Firestore profile
+      const docRef = doc(db, 'users', user.uid)
+      const docSnap = await getDoc(docRef)
+
+      if (docSnap.exists()) {
+        const profile = docSnap.data()
+        if (!profile.isActive) {
+          await signOut(auth)
+          throw new Error('Your account has been deactivated. Please contact an administrator.')
+        }
+        onLoginSuccess(profile)
+      } else {
+        // Default admin profile if document doesn't exist
+        const profile = {
+          uid: user.uid,
+          email: user.email,
+          fullName: username,
+          role: 'admin',
+          isActive: true,
+          createdAt: new Date().toISOString()
+        }
+        await setDoc(doc(db, 'users', user.uid), profile)
+        onLoginSuccess(profile)
       }
     } catch (err) {
       console.error(err)
       let displayError = err.message
-      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        displayError = 'Invalid email or password'
-      } else if (err.code === 'auth/email-already-in-use') {
-        displayError = 'This email is already in use.'
-      } else if (err.code === 'auth/weak-password') {
-        displayError = 'Password should be at least 6 characters.'
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        displayError = 'Invalid username/email or password'
       } else if (err.code === 'auth/invalid-email') {
         displayError = 'Please enter a valid email address.'
       }
@@ -106,155 +132,116 @@ export default function Login({ onLoginSuccess }) {
     }
   }
 
+  const logoUrl = 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiGXxCe0WNNedmFqSWeF761f7Kshhc-NP5ChRQKz9fr97cO8VaarvD0KlCwqHojJVBWv-RAxfOqMI5rD4H78KnARyOc6QgwL1nRRFWf5xNQ1d9F9HfAoLPPGlTyP0GwNl4n-INMEsWLQ4Y7zJtz5bOdAnc2ePH9-uCRgshlo6BsS6gJEz6fhrxL-5U5O3sX/s160/channels4_profile.jpg'
+
   return (
-    <div className="auth-container">
-      <div className="auth-card animate-enter">
-        <div className="auth-header">
-          <div className="auth-logo">
-            <Shield size={32} />
-          </div>
-          <h2>
-            {isForgot ? 'Reset Password' : isSignUp ? 'Create Admin Account' : 'Sign in to Subscriptly'}
-          </h2>
-          <p>
-            {isForgot
-              ? 'Enter your email address and we will send you a link to reset your password.'
-              : isSignUp
-              ? 'Sign up to configure and manage your subscriptions.'
-              : 'Enter your credentials to access the subscription portal.'}
-          </p>
-        </div>
+    <div className="login-container">
+      <div className="login-box">
+        <img src={logoUrl} alt="Logo" className="login-logo" />
+        <h2>My Company</h2>
 
         {error && (
-          <div className="alert-box danger">
+          <div className="alert-box danger" style={{ textAlign: 'left', marginBottom: 20 }}>
             <AlertCircle size={16} />
             <span>{error}</span>
           </div>
         )}
 
-        {message && (
-          <div className="alert-box success">
-            <Shield size={16} />
-            <span>{message}</span>
+        {successMsg && (
+          <div className="alert-box success" style={{ textAlign: 'left', marginBottom: 20 }}>
+            <CheckCircle size={16} />
+            <span>{successMsg}</span>
           </div>
         )}
 
-        <form onSubmit={handleAuth}>
-          {isSignUp && !isForgot && (
-            <>
-              <div className="form-group">
-                <label>Full Name</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 14, top: 13, color: 'var(--text-muted)' }}>
-                    <User size={16} />
-                  </span>
-                  <input
-                    type="text"
-                    className="form-control"
-                    style={{ paddingLeft: 40 }}
-                    placeholder="Enter full name"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Phone Number</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 14, top: 13, color: 'var(--text-muted)' }}>
-                    <Phone size={16} />
-                  </span>
-                  <input
-                    type="tel"
-                    className="form-control"
-                    style={{ paddingLeft: 40 }}
-                    placeholder="Enter phone number"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="form-group">
-            <label>Email Address</label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 14, top: 13, color: 'var(--text-muted)' }}>
-                <Mail size={16} />
-              </span>
+        <form onSubmit={handleLogin}>
+          {isForgot ? (
+            <div className="form-group" style={{ textAlign: 'left' }}>
+              <label>
+                <User size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+                Email Address
+              </label>
               <input
                 type="email"
                 className="form-control"
-                style={{ paddingLeft: 40 }}
-                placeholder="email@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter registered email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
                 required
               />
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="form-group" style={{ textAlign: 'left' }}>
+                <label>
+                  <User size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+                  Username
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Enter username or email"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
 
-          {!isForgot && (
-            <div className="form-group">
-              <label>Password</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 14, top: 13, color: 'var(--text-muted)' }}>
-                  <Lock size={16} />
-                </span>
+              <div className="form-group" style={{ textAlign: 'left' }}>
+                <label>
+                  <Lock size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+                  Password
+                </label>
                 <input
                   type="password"
                   className="form-control"
-                  style={{ paddingLeft: 40 }}
-                  placeholder="••••••••"
+                  placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
               </div>
-            </div>
+            </>
           )}
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px', marginTop: 10 }} disabled={loading}>
-            {loading ? 'Please wait...' : isForgot ? 'Send Password Reset Link' : isSignUp ? 'Sign Up & Continue' : 'Sign In'}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, marginBottom: 20 }}>
+            {!isForgot && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', margin: 0 }}>
+                <input type="checkbox" defaultChecked /> Remember Me
+              </label>
+            )}
+            <button
+              type="button"
+              className="auth-link"
+              onClick={() => setIsForgot(!isForgot)}
+              style={{ fontSize: 13 }}
+            >
+              {isForgot ? 'Back to Login' : 'Forgot Password?'}
+            </button>
+          </div>
+
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px' }} disabled={loading}>
+            {loading ? (
+              <RefreshCw className="spinner" size={16} />
+            ) : (
+              <>
+                <ArrowRight size={16} style={{ display: 'inline', marginRight: 6 }} />
+                {isForgot ? 'Reset Password' : 'Login'}
+              </>
+            )}
           </button>
         </form>
 
-        <div className="auth-footer">
-          {isForgot ? (
-            <p>
-              Remember your password?
-              <button className="auth-link" onClick={() => setIsForgot(false)}>
-                Sign In
-              </button>
-            </p>
-          ) : isSignUp ? (
-            <p>
-              Already have an account?
-              <button className="auth-link" onClick={() => setIsSignUp(false)}>
-                Sign In
-              </button>
-            </p>
-          ) : (
-            <>
-              <p style={{ marginBottom: 8 }}>
-                Don't have an account?
-                <button className="auth-link" onClick={() => setIsSignUp(true)}>
-                  Sign Up (First user becomes Admin)
-                </button>
-              </p>
-              <p>
-                Forgot your password?
-                <button className="auth-link" onClick={() => setIsForgot(true)}>
-                  Reset Password
-                </button>
-              </p>
-            </>
-          )}
+        <div className="login-footer">
+          <p>© {new Date().getFullYear()} My Company. All rights reserved.</p>
         </div>
       </div>
+
+      {/* Theme Toggle Button */}
+      <button className="login-theme-toggle" onClick={toggleTheme} title="Toggle Theme">
+        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
     </div>
   )
 }

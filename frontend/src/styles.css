@@ -105,54 +105,66 @@ body {
 }
 
 /* === Authentication Screens === */
-.auth-container {
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  background: linear-gradient(135deg, var(--navy-primary) 0%, var(--navy-light) 100%);
+}
+.login-box {
+  background: white;
+  padding: 50px 40px;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  border: 1px solid var(--border-color);
+}
+.login-logo {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 25px;
+  border: 3px solid var(--navy-primary);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.login-box h2 {
+  margin-bottom: 35px;
+  color: var(--navy-primary);
+  font-size: 26px;
+  font-weight: 600;
+  font-family: inherit;
+}
+.login-footer {
+  margin-top: 24px;
+  font-size: 13px;
+  color: #666;
+}
+.login-theme-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  background-color: var(--cream);
-  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  transition: all 0.3s;
+  z-index: 1000;
 }
-.auth-card {
-  background-color: var(--bg-card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: 0 8px 30px var(--shadow-color);
-  width: 100%;
-  max-width: 440px;
-  padding: 40px;
-}
-.auth-header {
-  text-align: center;
-  margin-bottom: 30px;
-}
-.auth-logo {
-  display: inline-grid;
-  place-items: center;
-  width: 60px;
-  height: 60px;
-  border-radius: 12px;
-  background-color: var(--navy-accent);
-  color: #fff;
-  font-size: 28px;
-  font-weight: 800;
-  margin-bottom: 15px;
-}
-.auth-card h2 {
-  font-family: Manrope, sans-serif;
-  margin: 0;
-  font-size: 24px;
-}
-.auth-card p {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin-top: 8px;
-}
-.auth-footer {
-  margin-top: 25px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-muted);
+.login-theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.1);
 }
 .auth-link {
   color: var(--navy-accent);
@@ -162,10 +174,24 @@ body {
   border: 0;
   padding: 0;
   font-size: inherit;
-  margin-left: 5px;
 }
 .auth-link:hover {
   text-decoration: underline;
+}
+
+body.dark-mode .login-box {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+body.dark-mode .login-box h2 {
+  color: #fff;
+}
+body.dark-mode .login-footer {
+  color: var(--text-muted);
+}
+body.dark-mode .login-theme-toggle {
+  background: rgba(0,0,0,0.3);
+  color: #fff;
 }
 
 /* === Alert/Notification Boxes === */
