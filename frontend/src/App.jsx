@@ -30,7 +30,6 @@ export default function App() {
   const [dbSeeded, setDbSeeded] = useState(true)
   const [currencySymbol, setCurrencySymbol] = useState('₹')
   const [darkMode, setDarkMode] = useState(false)
-  const [showAddSubscription, setShowAddSubscription] = useState(false)
 
   // Alarm badges count from Subscriptions
   const [expiredCount, setExpiredCount] = useState(0)
@@ -145,10 +144,10 @@ export default function App() {
   }
 
   const totalAlerts = expiredCount + expiringCount
+  const isAdmin = userProfile?.role === 'admin'
 
   // Render Component depending on selected sidebar nav option
   const renderContent = () => {
-    // If Add Subscription menu clicked, we show Subscriptions and trigger modal auto-open
     const forceOpenAdd = activeNav === 'Add Subscription'
     const viewName = forceOpenAdd ? 'Subscriptions' : activeNav
 
@@ -207,8 +206,6 @@ export default function App() {
 
   const defaultProfileLogo = 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiGXxCe0WNNedmFqSWeF761f7Kshhc-NP5ChRQKz9fr97cO8VaarvD0KlCwqHojJVBWv-RAxfOqMI5rD4H78KnARyOc6QgwL1nRRFWf5xNQ1d9F9HfAoLPPGlTyP0GwNl4n-INMEsWLQ4Y7zJtz5bOdAnc2ePH9-uCRgshlo6BsS6gJEz6fhrxL-5U5O3sX/s160/channels4_profile.jpg'
 
-  const isAdmin = userProfile?.role === 'admin'
-
   return (
     <div className="app-container">
       {/* Collapsible Sidebar matches PHP visual structures */}
@@ -227,14 +224,7 @@ export default function App() {
           <img src={defaultProfileLogo} alt="Profile" className="sidebar-logo" />
         </div>
 
-        {/* User Info labels inside Sidebar */}
-        {!sidebarCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 15 }}>
-            <span className="sidebar-user-name">{userProfile?.fullName || 'Administrator'}</span>
-            <span className="sidebar-user-role">{userProfile?.role || 'Admin'}</span>
-          </div>
-        )}
-
+        {/* Sidebar Menu items */}
         <div className="sidebar-menu-section" style={{ flex: 1, overflowY: 'auto' }}>
           <ul className="sidebar-menu">
             <li data-tooltip="Dashboard">
@@ -343,6 +333,15 @@ export default function App() {
           </ul>
         </div>
 
+        {/* Sidebar Dark Mode Toggle */}
+        <div className="sidebar-theme">
+          <button onClick={toggleDarkMode}>
+            <i className={`fas ${darkMode ? 'fa-sun' : 'fa-moon'}`} id="themeIcon"></i>
+            <span id="themeText">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
+        </div>
+
+        {/* Sidebar Logout Footer */}
         <div className="sidebar-logout">
           <button onClick={handleLogout}>
             <i className="fas fa-sign-out-alt"></i>
@@ -353,6 +352,16 @@ export default function App() {
 
       {/* Main Content Layout with Theme Controls */}
       <div className="main-content">
+        {/* PHP Breadcrumbs rendering */}
+        <div className="breadcrumb">
+          <a href="#" onClick={(e) => { e.preventDefault(); setActiveNav('Dashboard') }} style={{ color: 'var(--navy-accent)', textDecoration: 'none' }}>
+            <i className="fas fa-home"></i> Dashboard
+          </a>
+          <span className="breadcrumb-sep">/</span>
+          <span>{activeNav === 'Dashboard' ? 'Overview' : activeNav}</span>
+        </div>
+
+        {/* Page Top Header */}
         <div className="header">
           <h1>
             {activeNav === 'Dashboard' && <i className="fas fa-chart-line" />}
@@ -371,21 +380,14 @@ export default function App() {
             <span style={{ marginLeft: 8 }}>{activeNav}</span>
           </h1>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
-            {/* Theme Toggle in Top Header */}
-            <button
-              onClick={toggleDarkMode}
-              title="Toggle Theme"
-              style={{ background: 'transparent', border: 0, color: 'var(--text-primary)', cursor: 'pointer', fontSize: 18 }}
-            >
-              <i className={darkMode ? 'fas fa-sun' : 'fas fa-moon'} />
-            </button>
-
-            {/* User Indicator */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
-              <i className="fas fa-user-circle" style={{ fontSize: 18, color: 'var(--navy-accent)' }} />
-              <strong>{userProfile?.fullName}</strong>
+          <div className="header-right">
+            <div className="notification-bell-wrapper">
+              <button className="notification-bell-btn" title="Notifications" style={{ cursor: 'default' }}>
+                <i className="fas fa-bell"></i>
+                {totalAlerts > 0 && <span className="notification-badge">{totalAlerts}</span>}
+              </button>
             </div>
+            <div>Welcome, <strong>{userProfile?.fullName || 'Administrator'}</strong></div>
           </div>
         </div>
 
