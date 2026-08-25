@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { auth, db } from '../firebase'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
-import { doc, getDoc, setDoc, collection, getDocs, query, limit } from 'firebase/firestore'
-import { User, Lock, ArrowRight, AlertCircle, RefreshCw, CheckCircle, Sun, Moon } from 'lucide-react'
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore'
 
 export default function Login({ onLoginSuccess, onNavigate }) {
   const [username, setUsername] = useState('')
@@ -25,7 +24,7 @@ export default function Login({ onLoginSuccess, onNavigate }) {
     }
 
     if (!auth) {
-      setError('Firebase environment variables are missing! Please configure VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID, etc. in your Netlify Environment Variables settings.')
+      setError('Firebase environment variables are missing! Configure in your Netlify settings.')
     }
   }, [])
 
@@ -35,7 +34,6 @@ export default function Login({ onLoginSuccess, onNavigate }) {
     setIsDark(dark)
   }
 
-  // Map simple usernames to emails for Firebase Auth
   const mapUsernameToEmail = (userVal) => {
     const trimmed = userVal.trim().toLowerCase()
     if (trimmed.includes('@')) return trimmed
@@ -52,7 +50,7 @@ export default function Login({ onLoginSuccess, onNavigate }) {
     setLoading(true)
 
     if (!auth) {
-      setError('Firebase configuration is missing! Please configure the VITE_FIREBASE_API_KEY and other environment variables in your Netlify site settings.')
+      setError('Firebase configuration is missing!')
       setLoading(false)
       return
     }
@@ -118,37 +116,33 @@ export default function Login({ onLoginSuccess, onNavigate }) {
     }
   }
 
-  return (
-    <div className="auth-container">
-      <div className="auth-card">
-        {onNavigate && (
-          <button 
-            type="button" 
-            onClick={() => onNavigate('home')} 
-            className="auth-link" 
-            style={{ position: 'absolute', top: 20, left: 24, fontSize: 13, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <i className="fas fa-arrow-left"></i> Back to Home
-          </button>
-        )}
+  const logoUrl = 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiGXxCe0WNNedmFqSWeF761f7Kshhc-NP5ChRQKz9fr97cO8VaarvD0KlCwqHojJVBWv-RAxfOqMI5rD4H78KnARyOc6QgwL1nRRFWf5xNQ1d9F9HfAoLPPGlTyP0GwNl4n-INMEsWLQ4Y7zJtz5bOdAnc2ePH9-uCRgshlo6BsS6gJEz6fhrxL-5U5O3sX/s160/channels4_profile.jpg'
 
-        <div className="auth-header">
-          <div className="auth-logo-wrap">
-            <span className="auth-logo-circle"></span>
-          </div>
-          <h2>Sign In</h2>
-          <p>Login to manage your subscription configurations</p>
-        </div>
+  return (
+    <div className="login-container">
+      {onNavigate && (
+        <button 
+          onClick={() => onNavigate('home')} 
+          className="btn btn-outline" 
+          style={{ position: 'absolute', top: 20, left: 24, fontSize: 13, color: '#fff', borderColor: 'rgba(255,255,255,0.4)', background: 'rgba(0,0,0,0.2)' }}
+        >
+          <i className="fas fa-arrow-left"></i> Back to Home
+        </button>
+      )}
+
+      <div className="login-box">
+        <img src={logoUrl} alt="Logo" className="login-logo" />
+        <h2>Sign In</h2>
 
         {error && (
-          <div className="alert-box danger" style={{ marginBottom: 15 }}>
+          <div className="alert-box danger" style={{ marginBottom: 20 }}>
             <i className="fas fa-exclamation-circle" style={{ marginRight: 8 }}></i>
             <span>{error}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="alert-box success" style={{ marginBottom: 15 }}>
+          <div className="alert-box success" style={{ marginBottom: 20 }}>
             <i className="fas fa-check-circle" style={{ marginRight: 8 }}></i>
             <span>{successMsg}</span>
           </div>
@@ -156,8 +150,8 @@ export default function Login({ onLoginSuccess, onNavigate }) {
 
         <form onSubmit={handleLogin}>
           {isForgot ? (
-            <div className="form-group" style={{ textAlign: 'left' }}>
-              <label>Registered Email ID</label>
+            <div className="form-group" style={{ textAlign: 'left', marginBottom: 20 }}>
+              <label style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 8 }}>Registered Email ID</label>
               <input
                 type="email"
                 className="form-control"
@@ -169,10 +163,9 @@ export default function Login({ onLoginSuccess, onNavigate }) {
             </div>
           ) : (
             <>
-              <div className="form-group" style={{ textAlign: 'left' }}>
-                <label>
-                  <User size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
-                  Username
+              <div className="form-group" style={{ textAlign: 'left', marginBottom: 20 }}>
+                <label style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 8 }}>
+                  <i className="fas fa-user" style={{ marginRight: 6 }}></i> Username
                 </label>
                 <input
                   type="text"
@@ -185,10 +178,9 @@ export default function Login({ onLoginSuccess, onNavigate }) {
                 />
               </div>
 
-              <div className="form-group" style={{ textAlign: 'left' }}>
-                <label>
-                  <Lock size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
-                  Password
+              <div className="form-group" style={{ textAlign: 'left', marginBottom: 20 }}>
+                <label style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 8 }}>
+                  <i className="fas fa-lock" style={{ marginRight: 6 }}></i> Password
                 </label>
                 <input
                   type="password"
@@ -202,7 +194,7 @@ export default function Login({ onLoginSuccess, onNavigate }) {
             </>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, marginBottom: 25 }}>
             {!isForgot && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', margin: 0 }}>
                 <input type="checkbox" defaultChecked /> Remember Me
@@ -210,43 +202,46 @@ export default function Login({ onLoginSuccess, onNavigate }) {
             )}
             <button
               type="button"
-              className="auth-link"
               onClick={() => setIsForgot(!isForgot)}
-              style={{ fontSize: 13, border: 0, background: 'transparent', cursor: 'pointer' }}
+              style={{ fontSize: 13, border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--navy-accent)' }}
             >
               {isForgot ? 'Back to Login' : 'Forgot Password?'}
             </button>
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px' }} disabled={loading}>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px 20px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} disabled={loading}>
             {loading ? (
-              <RefreshCw className="spinner" size={16} />
+              <i className="fas fa-spinner fa-spin"></i>
             ) : (
               <>
-                <ArrowRight size={16} style={{ display: 'inline', marginRight: 6 }} />
-                {isForgot ? 'Reset Password' : 'Login'}
+                <span>{isForgot ? 'Reset Password' : 'Login'}</span>
+                <i className="fas fa-arrow-right"></i>
               </>
             )}
           </button>
         </form>
 
         {onNavigate && (
-          <div style={{ marginTop: 20, fontSize: 13, textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: 15 }}>
+          <div style={{ marginTop: 25, fontSize: 13, borderTop: '1px solid #e9ecef', paddingTop: 15, color: '#666' }}>
             Don't have an account?{' '}
-            <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('signup') }} style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+            <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('signup') }} style={{ color: 'var(--navy-accent)', fontWeight: 600, textDecoration: 'none' }}>
               Register Now
             </a>
           </div>
         )}
 
-        <div className="login-footer" style={{ marginTop: 20 }}>
+        <div className="login-footer">
           <p>© {new Date().getFullYear()} Mr.Rahul Scripts. All rights reserved.</p>
         </div>
       </div>
 
       {/* Theme Toggle Button */}
-      <button className="login-theme-toggle" onClick={toggleTheme} title="Toggle Theme">
-        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+      <button 
+        onClick={toggleTheme} 
+        style={{ position: 'fixed', bottom: 20, right: 20, width: 44, height: 44, borderRadius: '50%', border: 0, background: '#fff', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        title="Toggle Theme"
+      >
+        <i className={`fas ${isDark ? 'fa-sun' : 'fa-moon'}`} style={{ fontSize: 18, color: '#333' }}></i>
       </button>
     </div>
   )

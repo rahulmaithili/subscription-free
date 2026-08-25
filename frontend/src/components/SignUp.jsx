@@ -100,30 +100,28 @@ export default function SignUp({ onNavigate }) {
     }
   }
 
+  const logoUrl = 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiGXxCe0WNNedmFqSWeF761f7Kshhc-NP5ChRQKz9fr97cO8VaarvD0KlCwqHojJVBWv-RAxfOqMI5rD4H78KnARyOc6QgwL1nRRFWf5xNQ1d9F9HfAoLPPGlTyP0GwNl4n-INMEsWLQ4Y7zJtz5bOdAnc2ePH9-uCRgshlo6BsS6gJEz6fhrxL-5U5O3sX/s160/channels4_profile.jpg'
+
   return (
-    <div className="auth-container">
-      <div className="auth-card" style={{ maxWidth: 850, padding: 40, margin: '40px auto' }}>
+    <div className="login-container" style={{ overflowY: 'auto', padding: '40px 20px' }}>
+      <div className="login-box" style={{ maxWidth: 850, padding: 40, margin: '40px auto' }}>
         
         {onNavigate && (
           <button 
             type="button" 
             onClick={() => onNavigate('home')} 
-            className="auth-link" 
-            style={{ position: 'absolute', top: 20, left: 24, fontSize: 13, border: 0, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+            className="btn btn-outline" 
+            style={{ position: 'absolute', top: 20, left: 24, fontSize: 13, color: '#fff', borderColor: 'rgba(255,255,255,0.4)', background: 'rgba(0,0,0,0.2)' }}
           >
             <i className="fas fa-arrow-left"></i> Back to Home
           </button>
         )}
 
-        <div className="auth-header" style={{ marginBottom: 25 }}>
-          <div className="auth-logo-wrap">
-            <span className="auth-logo-circle" style={{ borderColor: 'var(--primary)' }}>
-              <i className="fas fa-user-plus" style={{ color: 'var(--primary)', fontSize: 24 }}></i>
-            </span>
-          </div>
-          <h2>Create Your Business Account</h2>
-          <p>Fill in your details below to get instant access to premium extensions & tools</p>
-        </div>
+        <img src={logoUrl} alt="Logo" className="login-logo" />
+        <h2>Create Your Business Account</h2>
+        <p style={{ color: '#666', marginTop: 5, marginBottom: 25, fontSize: 14 }}>
+          Fill in your details below to get instant access to premium extensions & tools
+        </p>
 
         {error && (
           <div className="alert-box danger" style={{ marginBottom: 15 }}>
@@ -350,9 +348,9 @@ export default function SignUp({ onNavigate }) {
           </button>
         </form>
 
-        <div className="auth-footer" style={{ marginTop: 20, textAlign: 'center' }}>
+        <div className="login-footer" style={{ marginTop: 20 }}>
           Already have an account?{' '}
-          <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('login') }} style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+          <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('login') }} style={{ color: 'var(--navy-accent)', fontWeight: 600, textDecoration: 'none' }}>
             Login Now
           </a>
         </div>
