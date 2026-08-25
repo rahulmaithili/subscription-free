@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function getUserData() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function admin() { return signedIn() && (request.auth.token.role == 'admin' || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin')); }
+    function salesperson() { return signedIn() && (request.auth.token.role == 'salesperson' || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'salesperson')); }
+
+    match /subscriptions/{subscriptionId} {
+      allow read: if signedIn();
+      allow create, update, delete: if admin() || salesperson();
+    }
+
+    match /customers/{customerId} {
+      allow read: if signedIn();
+      allow create, update, delete: if admin() || salesperson();
+    }
+
+    match /products/{productId} {
+      allow read: if signedIn();
+      allow create, update, delete: if admin();
+    }
+
+    match /salespersons/{salespersonId} {
+      allow read: if signedIn();
+      allow create, update, delete: if admin();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if signedIn();
+      allow create, update, delete: if admin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if signedIn();
+      allow create, update, delete: if admin() || salesperson();
+    }
+
+    match /system_settings/{settingId} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+
+    match /activity_logs/{logId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if admin();
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || admin());
+      allow create: if signedIn();
+      allow update: if signedIn() && (request.auth.uid == userId || admin());
+      allow delete: if admin();
+    }
+
+    match /{document=**} {
+      allow read, write: if admin();
+    }
+  }
+}
