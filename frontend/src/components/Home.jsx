@@ -409,6 +409,67 @@ export default function Home({ onNavigate, currencySymbol = '₹' }) {
         </div>
       </section>
 
+      {/* How it Works / Licensing explanation */}
+      <section className="home-features-sec" id="licensing" style={{ background: '#f8fafc', padding: '60px 0', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+        <div className="home-container">
+          <div className="home-section-header" style={{ textAlign: 'center', marginBottom: 40 }}>
+            <span className="home-section-tag" style={{ background: 'rgba(0,116,217,0.1)', color: '#0074D9', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>API LICENSING ENGINE</span>
+            <h2 style={{ fontSize: 28, color: '#001f3f', marginTop: 12 }}>How Our Software Licensing Works</h2>
+            <p style={{ color: '#666', fontSize: 15, marginTop: 8 }}>Deploy your Apps Script automation, Chrome extension or web app with confidence. Authenticate users instantly.</p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 30, marginTop: 40 }}>
+            <div style={{ background: '#fff', padding: 30, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(0,116,217,0.1)', color: '#0074D9', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto', fontSize: 24, fontWeight: 800 }}>1</div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#001f3f', marginBottom: 10 }}>Choose a Software Plan</h3>
+              <p style={{ color: '#666', fontSize: 13, lineHeight: 1.6, margin: 0 }}>Purchase any software script or subscribe to our developer membership to activate license configurations.</p>
+            </div>
+
+            <div style={{ background: '#fff', padding: 30, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(40,167,69,0.1)', color: '#28a745', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto', fontSize: 24, fontWeight: 800 }}>2</div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#001f3f', marginBottom: 10 }}>Retrieve Your API Key</h3>
+              <p style={{ color: '#666', fontSize: 13, lineHeight: 1.6, margin: 0 }}>Log in to your Customer Portal to find your unique license key (<code>SMS-XXXX-XXXX</code>). Copy it with one click.</p>
+            </div>
+
+            <div style={{ background: '#fff', padding: 30, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(124,58,237,0.1)', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto', fontSize: 24, fontWeight: 800 }}>3</div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#001f3f', marginBottom: 10 }}>Unlock & Authenticate</h3>
+              <p style={{ color: '#666', fontSize: 13, lineHeight: 1.6, margin: 0 }}>Paste the API Key into your software config. Our validation endpoint verifies active status in real-time.</p>
+            </div>
+          </div>
+
+          {/* Code snippet display */}
+          <div style={{ marginTop: 50, background: '#0f172a', padding: 25, borderRadius: 8, border: '1px solid #1e293b', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid #334155', paddingBottom: 10 }}>
+              <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 700, fontFamily: 'monospace' }}><i className="fas fa-code"></i> GOOGLE APPS SCRIPT INTEGRATION EXAMPLE</span>
+              <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', background: '#ff5f56', boxShadow: '20px 0 0 #ffbd2e, 40px 0 0 #27c93f' }}></span>
+            </div>
+            <pre style={{ margin: 0, color: '#38bdf8', fontFamily: 'Consolas, monospace', fontSize: 12, overflowX: 'auto', whiteSpace: 'pre' }}>{`// Place this function inside your Google Sheets Script to restrict unauthorized usage
+function checkUserSubscription() {
+  var userLicenseKey = "SMS-XXXX-XXXX-XXXX-XXXX"; // Let user input their key
+  var url = "https://your-domain.com/api/validate?key=" + encodeURIComponent(userLicenseKey);
+  
+  try {
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var result = JSON.parse(response.getContentText());
+    
+    if (result.valid) {
+      Logger.log("Authentication successful! Customer: " + result.customer);
+      return true; // Grant access
+    } else {
+      SpreadsheetApp.getUi().alert("License Error: " + result.message);
+      return false; // Lock sheets
+    }
+  } catch (e) {
+    Logger.log("Validation server error: " + e.toString());
+    return false;
+  }
+}`}
+            </pre>
+          </div>
+        </div>
+      </section>
+
       {/* Membership pricing tables */}
       <section className="home-membership-sec" id="membership">
         <div className="home-container">
@@ -421,12 +482,13 @@ export default function Home({ onNavigate, currencySymbol = '₹' }) {
           <div className="home-membership-grid">
             <div className="home-membership-card">
               <div>
-                <h3>Bronze Plan</h3>
+                <h3>Basic Developer License</h3>
                 <div className="home-membership-price">{currencySymbol}999<span>/mo</span></div>
                 <ul className="home-membership-features">
-                  <li><i className="fas fa-check"></i> Standard templates access</li>
-                  <li><i className="fas fa-check"></i> Community forum support</li>
-                  <li><i className="fas fa-check"></i> Email queries</li>
+                  <li><i className="fas fa-check"></i> 1 Active Web App / Script License</li>
+                  <li><i className="fas fa-check"></i> 500 Daily API verification calls</li>
+                  <li><i className="fas fa-check"></i> Auto generated keys in dashboard</li>
+                  <li><i className="fas fa-check"></i> Standard Email Support</li>
                 </ul>
               </div>
               <button className="home-btn home-btn-outline" style={{ width: '100%', marginTop: 20 }} onClick={() => onNavigate('login')}>Subscribe</button>
@@ -434,12 +496,13 @@ export default function Home({ onNavigate, currencySymbol = '₹' }) {
 
             <div className="home-membership-card premium">
               <div>
-                <h3>Silver Plan</h3>
+                <h3>Developer Pro License</h3>
                 <div className="home-membership-price">{currencySymbol}2,499<span>/mo</span></div>
                 <ul className="home-membership-features">
-                  <li><i className="fas fa-check"></i> All scripts templates download</li>
-                  <li><i className="fas fa-check"></i> Direct email support (under 24h)</li>
-                  <li><i className="fas fa-check"></i> Minor code configurations</li>
+                  <li><i className="fas fa-check"></i> 5 Active Web App / Script Licenses</li>
+                  <li><i className="fas fa-check"></i> 5,000 Daily API verification calls</li>
+                  <li><i className="fas fa-check"></i> Key regeneration & reset tools</li>
+                  <li><i className="fas fa-check"></i> Priority Email Support (under 12h)</li>
                 </ul>
               </div>
               <button className="home-btn home-btn-primary" style={{ width: '100%', marginTop: 20 }} onClick={() => onNavigate('login')}>Subscribe Now</button>
@@ -447,12 +510,13 @@ export default function Home({ onNavigate, currencySymbol = '₹' }) {
 
             <div className="home-membership-card">
               <div>
-                <h3>Gold Plan</h3>
+                <h3>Enterprise License</h3>
                 <div className="home-membership-price">{currencySymbol}4,999<span>/mo</span></div>
                 <ul className="home-membership-features">
-                  <li><i className="fas fa-check"></i> All source files + updates</li>
-                  <li><i className="fas fa-check"></i> WhatsApp hotline support</li>
-                  <li><i className="fas fa-check"></i> Custom project consultations</li>
+                  <li><i className="fas fa-check"></i> Unlimited Web App / Script Licenses</li>
+                  <li><i className="fas fa-check"></i> Unlimited API verification calls</li>
+                  <li><i className="fas fa-check"></i> Multi-user client management portal</li>
+                  <li><i className="fas fa-check"></i> Dedicated WhatsApp hotline support</li>
                 </ul>
               </div>
               <button className="home-btn home-btn-outline" style={{ width: '100%', marginTop: 20 }} onClick={() => onNavigate('login')}>Subscribe</button>
