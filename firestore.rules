@@ -54,6 +54,10 @@ service cloud.firestore {
       allow delete: if admin();
     }
 
+    match /license_keys/{licenseKey} {
+      allow get: if true;
+    }
+
     match /{document=**} {
       allow read, write: if admin();
     }

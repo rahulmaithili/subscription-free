@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore'
+import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
 export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAdd = false }) {
@@ -19,7 +19,7 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterAddedBy, setFilterAddedBy] = useState('All')
 
-  // Chevron Active Tab Filter (ALL, ACTIVE, EXPIRING SOON, EXPIRING TODAY, EXPIRED, PAUSED, CANCELLED)
+  // Chevron Active Tab Filter
   const [activeStage, setActiveStage] = useState('ALL')
 
   // Modals state
@@ -45,9 +45,16 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
   const [formAutoRenew, setFormAutoRenew] = useState(true)
   const [formPriority, setFormPriority] = useState('Medium')
   const [formStatus, setFormStatus] = useState('active')
+  const [formProductKey, setFormProductKey] = useState('') // New License Key Field
 
   // Page limit
   const [pageLimit, setPageLimit] = useState(10)
+
+  // Helper: Generate Unique License Key
+  const generateLicenseKey = () => {
+    const segment = () => Math.random().toString(36).substring(2, 6).toUpperCase()
+    return `SMS-${segment()}-${segment()}-${segment()}-${segment()}`
+  }
 
   const fetchData = async () => {
     try {
@@ -103,7 +110,6 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     return 'Active'
   }
 
-  // Count stats for cards
   let activeCount = 0
   let expiringSoonCount = 0
   let expiringTodayCount = 0
@@ -126,7 +132,6 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     .filter(s => s.paymentStatus !== 'Paid')
     .reduce((sum, s) => sum + (Number(s.sellingPrice) || 0), 0)
 
-  // Status Tab Action mapping
   const filterByStage = (sub) => {
     if (activeStage === 'ALL') return true
     const renewalStatus = getSubRenewalStatus(sub.expiryDate, sub.subscriptionStatus)
@@ -139,50 +144,45 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     return true
   }
 
-  // Table filters logic
   const filteredSubscriptions = subscriptions.filter(sub => {
     if (!filterByStage(sub)) return false
 
-    // search customer name / invoice
     if (searchCustomer.trim()) {
       const needle = searchCustomer.toLowerCase()
       const matchName = (sub.customerName || '').toLowerCase().includes(needle)
       const matchInvoice = (sub.invoiceNo || '').toLowerCase().includes(needle)
-      if (!matchName && !matchInvoice) return false
+      const matchKey = (sub.productKey || '').toLowerCase().includes(needle)
+      if (!matchName && !matchInvoice && !matchKey) return false
     }
 
-    // payment status
     if (filterPayment !== 'All' && sub.paymentStatus !== filterPayment) return false
-
-    // priority
     if (filterPriority !== 'All' && sub.priority !== filterPriority) return false
-
-    // product
     if (filterProduct !== 'All' && sub.productId !== filterProduct) return false
 
-    // date from
     if (filterDateFrom) {
       if (!sub.invoiceDate || sub.invoiceDate < filterDateFrom) return false
     }
-
-    // date to
     if (filterDateTo) {
       if (!sub.invoiceDate || sub.invoiceDate > filterDateTo) return false
     }
-
-    // added by
     if (filterAddedBy !== 'All' && sub.salespersonId !== filterAddedBy) return false
 
     return true
   })
 
-  // Quick Inline Status Update Dropdowns
+  // Quick Inline Status Update Dropdowns with license key syncing
   const handleUpdatePaymentStatus = async (sub, newStatus) => {
     try {
       await updateDoc(doc(db, 'subscriptions', sub.id), {
         paymentStatus: newStatus,
         updatedAt: new Date().toISOString()
       })
+      if (sub.productKey) {
+        await updateDoc(doc(db, 'license_keys', sub.productKey), {
+          paymentStatus: newStatus,
+          updatedAt: new Date().toISOString()
+        })
+      }
       fetchData()
     } catch (err) {
       console.error(err)
@@ -208,6 +208,12 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
         subscriptionStatus: nextStatus,
         updatedAt: new Date().toISOString()
       })
+      if (sub.productKey) {
+        await updateDoc(doc(db, 'license_keys', sub.productKey), {
+          subscriptionStatus: nextStatus,
+          updatedAt: new Date().toISOString()
+        })
+      }
       fetchData()
     } catch (err) {
       console.error(err)
@@ -234,6 +240,7 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     setFormAutoRenew(true)
     setFormPriority('Medium')
     setFormStatus('active')
+    setFormProductKey(generateLicenseKey()) // Auto generate key
     setShowModal(true)
   }
 
@@ -257,6 +264,7 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     setFormAutoRenew(sub.autoRenew !== false)
     setFormPriority(sub.priority || 'Medium')
     setFormStatus(sub.subscriptionStatus || 'active')
+    setFormProductKey(sub.productKey || generateLicenseKey())
     setShowModal(true)
   }
 
@@ -278,6 +286,8 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     const selectedProd = products.find(p => p.id === formProductId)
     const selectedSP = salespersons.find(s => s.id === formSalespersonId)
     const selectedSupp = suppliers.find(s => s.id === formSupplierId)
+
+    const keyToSave = formProductKey || generateLicenseKey()
 
     const subData = {
       customerId: formCustomerId,
@@ -303,18 +313,37 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
       autoRenew: formAutoRenew,
       priority: formPriority,
       subscriptionStatus: formStatus,
+      productKey: keyToSave, // Save license key
       updatedAt: new Date().toISOString()
     }
 
     try {
+      let subId = editingSub?.id
       if (editingSub) {
+        // If key changed, delete the old license key entry
+        if (editingSub.productKey && editingSub.productKey !== keyToSave) {
+          await deleteDoc(doc(db, 'license_keys', editingSub.productKey))
+        }
         await updateDoc(doc(db, 'subscriptions', editingSub.id), subData)
       } else {
-        await addDoc(collection(db, 'subscriptions'), {
+        const docRef = await addDoc(collection(db, 'subscriptions'), {
           ...subData,
           createdAt: new Date().toISOString()
         })
+        subId = docRef.id
       }
+
+      // Sync with public 'license_keys' collection
+      await setDoc(doc(db, 'license_keys', keyToSave), {
+        subscriptionId: subId,
+        customerName: selectedCust ? selectedCust.companyName : 'Unknown',
+        productName: selectedProd ? selectedProd.productName : 'Uncategorized',
+        expiryDate: formExpiryDate,
+        paymentStatus: formPaymentStatus,
+        subscriptionStatus: formStatus,
+        updatedAt: new Date().toISOString()
+      })
+
       setShowModal(false)
       fetchData()
     } catch (err) {
@@ -324,11 +353,14 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     }
   }
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (item) => {
     if (!window.confirm('Delete Subscription? This action cannot be undone.')) return
     setLoading(true)
     try {
-      await deleteDoc(doc(db, 'subscriptions', id))
+      await deleteDoc(doc(db, 'subscriptions', item.id))
+      if (item.productKey) {
+        await deleteDoc(doc(db, 'license_keys', item.productKey))
+      }
       fetchData()
     } catch (err) {
       console.error(err)
@@ -336,18 +368,21 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
     }
   }
 
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text)
+    alert('License Key copied to clipboard!')
+  }
+
   const exportCSV = () => {
-    let csv = 'SL,Customer,Invoice,Product,Expiry,Days Left,Status,Payment,Amount,Priority\n'
+    let csv = 'SL,Customer,Invoice,Product,License Key,Expiry,Status,Payment,Amount\n'
     filteredSubscriptions.forEach((s) => {
-      const status = getSubRenewalStatus(s.expiryDate, s.subscriptionStatus)
-      const daysLeft = s.expiryDate ? Math.ceil((new Date(s.expiryDate) - today) / (1000 * 60 * 60 * 24)) : ''
-      csv += `"${s.index}","${s.customerName || ''}","${s.invoiceNo || ''}","${s.productName || ''}","${s.expiryDate || 'N/A'}","${daysLeft}","${status}","${s.paymentStatus || 'Unpaid'}","${s.sellingPrice || 0}","${s.priority || 'Medium'}"\n`
+      csv += `"${s.index}","${s.customerName || ''}","${s.invoiceNo || ''}","${s.productName || ''}","${s.productKey || ''}","${s.expiryDate || 'N/A'}","${getSubRenewalStatus(s.expiryDate, s.subscriptionStatus)}","${s.paymentStatus || 'Unpaid'}","${s.sellingPrice || 0}"\n`
     })
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.setAttribute('href', url)
-    link.setAttribute('download', 'subscriptions_report.csv')
+    link.setAttribute('download', 'subscriptions_licenses.csv')
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -368,7 +403,7 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* 1. Header Stat Cards Row (9 Columns Layout matching screenshot 1) */}
+      {/* 1. Header Stat Cards Row */}
       <div className="dash-stats" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
         <div className="dash-card dash-card-navy" style={{ padding: '12px 10px', minHeight: 70 }} onClick={() => setActiveStage('ALL')}>
           <div className="dash-card-icon" style={{ fontSize: 24 }}><i className="fas fa-file-contract"></i></div>
@@ -420,7 +455,7 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
       <div className="data-section">
         {/* Card Header */}
         <div className="section-header">
-          <h2><i className="fas fa-file-contract"></i> Subscriptions</h2>
+          <h2><i className="fas fa-file-contract"></i> Subscriptions & Licensing</h2>
           <div style={{ display: 'inline-flex', gap: 6 }}>
             <button className="btn btn-secondary" onClick={fetchData}><i className="fas fa-sync-alt"></i> Refresh</button>
             <button className="btn btn-success" onClick={openAddModal}><i className="fas fa-plus"></i> Add Subscription</button>
@@ -467,8 +502,8 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
             <div className="form-group" style={{ margin: 0 }}>
-              <label style={{ fontSize: 10, textTransform: 'uppercase', color: '#666', fontWeight: 700 }}>Customer</label>
-              <input type="text" className="form-control" style={{ padding: '6px 10px', fontSize: 12 }} placeholder="Search customer..." value={searchCustomer} onChange={(e) => setSearchCustomer(e.target.value)} />
+              <label style={{ fontSize: 10, textTransform: 'uppercase', color: '#666', fontWeight: 700 }}>Customer / Key</label>
+              <input type="text" className="form-control" style={{ padding: '6px 10px', fontSize: 12 }} placeholder="Search..." value={searchCustomer} onChange={(e) => setSearchCustomer(e.target.value)} />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
               <label style={{ fontSize: 10, textTransform: 'uppercase', color: '#666', fontWeight: 700 }}>Payment Status</label>
@@ -550,16 +585,13 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
                   <th style={{ width: 30 }}><input type="checkbox" /></th>
                   <th style={{ width: 40 }}>SL</th>
                   <th>Customer</th>
-                  <th>Phone</th>
-                  <th>Product</th>
-                  <th>Expiry</th>
+                  <th>Product & License Key</th>
+                  <th>Expiry Date</th>
                   <th>Days Left</th>
                   <th>Status</th>
                   <th>Payment</th>
                   <th>Amount</th>
                   <th>Priority</th>
-                  <th>Sales Person</th>
-                  <th>Added By</th>
                   <th>Sub Status</th>
                   <th style={{ textAlign: 'right', width: 220 }}>Actions</th>
                 </tr>
@@ -574,12 +606,26 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
                     <tr key={item.id}>
                       <td><input type="checkbox" /></td>
                       <td>{item.index}</td>
-                      <td><strong style={{ color: 'var(--navy-accent)' }}>{item.customerName}</strong></td>
-                      <td style={{ fontSize: 11 }}>{item.phone || '-'}</td>
                       <td>
-                        <span className="status-badge" style={{ background: '#0074D9', color: '#fff', fontSize: 10, padding: '3px 8px', borderRadius: 4 }}>
+                        <strong style={{ color: 'var(--navy-accent)' }}>{item.customerName}</strong>
+                        <div style={{ fontSize: 10, color: '#888' }}>{item.phone || '-'}</div>
+                      </td>
+                      <td>
+                        <span className="status-badge" style={{ background: '#0074D9', color: '#fff', fontSize: 10, padding: '3px 8px', borderRadius: 4, display: 'inline-block', marginBottom: 4 }}>
                           {item.productName}
                         </span>
+                        {item.productKey && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+                            <code style={{ background: '#f1f3f5', padding: '2px 4px', borderRadius: 3, color: '#333' }}>{item.productKey}</code>
+                            <button 
+                              style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer', color: '#666' }} 
+                              onClick={() => copyToClipboard(item.productKey)}
+                              title="Copy License Key"
+                            >
+                              <i className="far fa-copy" style={{ fontSize: 11 }}></i>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td style={{ fontSize: 11 }}>{item.expiryDate || 'N/A'}</td>
                       <td>
@@ -627,8 +673,6 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
                           </span>
                         ) : '--'}
                       </td>
-                      <td style={{ fontSize: 11 }}>{item.salespersonName || '-'}</td>
-                      <td style={{ fontSize: 11 }}>{item.addedBy || 'admin'}</td>
                       <td>
                         <span className="status-badge" style={{ background: item.subscriptionStatus === 'active' ? '#28a745' : '#ffc107', color: '#fff', fontSize: 10 }}>
                           {item.subscriptionStatus === 'active' ? 'Active' : 'Paused'}
@@ -656,7 +700,6 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
                             <i className="fas fa-envelope"></i>
                           </a>
 
-                          {/* Quick change dropdowns */}
                           <select 
                             style={{ fontSize: 9, padding: '2px 4px', width: 65, cursor: 'pointer' }} 
                             value={item.paymentStatus || 'Unpaid'}
@@ -683,7 +726,7 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
                             <i className={item.subscriptionStatus === 'active' ? 'fas fa-pause-circle' : 'fas fa-play-circle'}></i>
                           </button>
 
-                          <button className="action-icon" title="Delete" style={{ color: '#dc3545', border: 0, background: 'transparent', cursor: 'pointer' }} onClick={() => handleDelete(item.id)}>
+                          <button className="action-icon" title="Delete" style={{ color: '#dc3545', border: 0, background: 'transparent', cursor: 'pointer' }} onClick={() => handleDelete(item)}>
                             <i className="fas fa-trash"></i>
                           </button>
                         </div>
@@ -693,7 +736,7 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
                 })}
                 {filteredSubscriptions.length === 0 && (
                   <tr>
-                    <td colSpan="15" style={{ textAlign: 'center', color: '#999', padding: 20 }}>No subscriptions listed.</td>
+                    <td colSpan="12" style={{ textAlign: 'center', color: '#999', padding: 20 }}>No subscriptions listed.</td>
                   </tr>
                 )}
               </tbody>
@@ -714,6 +757,30 @@ export default function Subscriptions({ user, currencySymbol = '₹', autoOpenAd
             </div>
             <form onSubmit={handleSave}>
               <div className="modal-body" style={{ maxHeight: '65vh' }}>
+                
+                {/* 5. Key Display / Regeneration Section in modal */}
+                <div style={{ background: '#f8f9fa', padding: 12, borderRadius: 6, border: '1px solid #e9ecef', marginBottom: 15 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy-accent)', display: 'block', marginBottom: 6 }}>API License Key</label>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      style={{ fontFamily: 'monospace', fontWeight: 600 }} 
+                      value={formProductKey} 
+                      onChange={(e) => setFormProductKey(e.target.value)} 
+                      placeholder="License key is auto generated"
+                    />
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      onClick={() => setFormProductKey(generateLicenseKey())}
+                      style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '8px 14px' }}
+                    >
+                      <i className="fas fa-sync"></i> Regenerate
+                    </button>
+                  </div>
+                </div>
+
                 <div className="form-row">
                   <div className="form-group">
                     <label>Customer *</label>

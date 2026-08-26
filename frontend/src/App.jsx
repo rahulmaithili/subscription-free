@@ -20,6 +20,7 @@ import SalesPersons from './components/SalesPersons'
 import Reports from './components/Reports'
 import Users from './components/Users'
 import Settings from './components/Settings'
+import ApiValidate from './components/ApiValidate'
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null)
@@ -212,6 +213,12 @@ export default function App() {
       default:
         return <Dashboard user={userProfile} currencySymbol={currencySymbol} onNavigate={setActiveNav} />
     }
+  }
+
+  // Public verification API path interceptor
+  const currentPath = window.location.pathname
+  if (currentPath === '/api/validate' || currentPath === '/validate' || currentPath === '/validate-key') {
+    return <ApiValidate />
   }
 
   if (authLoading) {
